@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "bp_pocketshell",
+  "project_id": "44b5adab-ec4e-4f21-876c-910f79544f18"
+}
