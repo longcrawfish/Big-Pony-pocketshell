@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckResult } from "./update-check";
 
-export interface CachedCheck extends CheckResult { checkedAt: number }
+export interface CachedCheck extends CheckResult { checkedAt: number; repo?: string | null }
 
 export const CHECK_TTL_MS = 6 * 60 * 60 * 1000;
 

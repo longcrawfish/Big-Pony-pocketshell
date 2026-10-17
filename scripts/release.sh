@@ -1,135 +1,87 @@
 #!/usr/bin/env bash
-# Cut a PocketShell release: cross-compile every target binary, package them as
-# per-platform tarballs with a shared SHA256SUMS.txt, then bump the version,
-# commit, tag, push, and publish a GitHub Release with the archives attached.
-#
-# Usage:
-#   scripts/release.sh <version> [--dry-run] [--notes-file PATH]
-#
-#   scripts/release.sh 0.2.0 --dry-run
-#       Build + package + checksum into agent/dist only. No version bump, no
-#       commit/tag/push, no GitHub Release. Use it to verify the cross-compile
-#       before publishing for real.
-#
-#   https_proxy=http://127.0.0.1:7890 HTTPS_PROXY=http://127.0.0.1:7890 \
-#     scripts/release.sh 0.2.0 --notes-file docs/deploy-info/release-notes/v0.2.0.md
-#       Full release. git push and gh honor $https_proxy / $HTTPS_PROXY — set
-#       them when direct github.com access times out on this network.
-#
-# --notes-file  Markdown file used verbatim as the GitHub Release body. Without
-#               it the release is created with --generate-notes (commit-derived).
+# Full release: bump -> commit -> gates -> build -> verify -> tag -> publish.
+# Dry run builds the CURRENT package version; it never edits source or git refs.
 set -euo pipefail
-
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-AGENT="$REPO/agent"
-DIST="$AGENT/dist"
-# Must match the targets build-bin.ts compiles and the platforms the README
-# download section advertises.
-TARGETS=(linux-x64 linux-arm64 darwin-arm64 darwin-x64)
-
-# --- args --------------------------------------------------------------------
-VERSION=""
-DRY_RUN=0
-NOTES_FILE=""
+repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+release_repo=longcrawfish/Big-Pony-pocketshell
+version=""
+dry_run=0
+notes_file=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --dry-run) DRY_RUN=1 ;;
-    --notes-file) NOTES_FILE="${2:-}"; shift ;;
-    -*) echo "unknown flag: $1" >&2; exit 2 ;;
-    *) if [ -z "$VERSION" ]; then VERSION="$1"; else echo "unexpected arg: $1" >&2; exit 2; fi ;;
+    --dry-run) dry_run=1 ;;
+    --repo) release_repo=${2:?missing repository}; shift ;;
+    --notes-file) notes_file=${2:?missing notes file}; shift ;;
+    -*) echo "Unknown flag: $1" >&2; exit 2 ;;
+    *) [ -z "$version" ] || { echo 'Unexpected argument' >&2; exit 2; }; version=$1 ;;
   esac
   shift
 done
-
-[ -n "$VERSION" ] || { echo "usage: scripts/release.sh <version> [--dry-run] [--notes-file PATH]" >&2; exit 2; }
-[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "version must be semver like 0.2.0 (got: $VERSION)" >&2; exit 2; }
-TAG="v$VERSION"
-
-# --- preconditions -----------------------------------------------------------
-for c in bun tar shasum git; do command -v "$c" >/dev/null || { echo "missing tool: $c" >&2; exit 1; }; done
-if [ "$DRY_RUN" -eq 0 ]; then
-  command -v gh >/dev/null || { echo "missing tool: gh" >&2; exit 1; }
-  gh auth status >/dev/null 2>&1 || { echo "gh not authenticated (run: gh auth login)" >&2; exit 1; }
-  [ -z "$(git -C "$REPO" status --porcelain)" ] || { echo "working tree not clean; commit or stash first" >&2; exit 1; }
-  git -C "$REPO" rev-parse "$TAG" >/dev/null 2>&1 && { echo "tag $TAG already exists" >&2; exit 1; }
-  [ -n "$NOTES_FILE" ] && [ ! -f "$NOTES_FILE" ] && { echo "notes file not found: $NOTES_FILE" >&2; exit 1; }
+[[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo 'Usage: release.sh X.Y.Z [--dry-run] [--repo OWNER/REPO] [--notes-file PATH]' >&2; exit 2; }
+# Trust is compiled in. A different release target requires a reviewed source change.
+[ "$release_repo" = longcrawfish/Big-Pony-pocketshell ] || { echo 'Release repo differs from the built-in trusted fork' >&2; exit 2; }
+for tool in bun git tar shasum; do command -v "$tool" >/dev/null || { echo "Missing tool: $tool" >&2; exit 1; }; done
+[ "$(bun --version)" = "$(cat "$repo_root/.bun-version")" ] || { echo 'Use the pinned Bun version' >&2; exit 1; }
+[ -z "$notes_file" ] || [ -f "$notes_file" ] || { echo 'Notes file missing' >&2; exit 1; }
+cd "$repo_root"
+current=$(bun -e 'const a=require("./app/package.json"), b=require("./agent/package.json"); if(a.version!==b.version) process.exit(1); console.log(a.version)')
+if [ "$dry_run" -eq 1 ]; then
+  [ "$version" = "$current" ] || { echo "Dry run builds current version $current; requested $version would mislabel artifacts" >&2; exit 2; }
+  export POCKETSHELL_ALLOW_DIRTY=1
+else
+  [ -z "$(git status --porcelain)" ] || { echo 'Working tree must be clean' >&2; exit 1; }
+  command -v gh >/dev/null
+  gh auth status >/dev/null
+  remote=$(git remote get-url origin)
+  case "$remote" in
+    "https://github.com/$release_repo"|"https://github.com/$release_repo.git"|"git@github.com:$release_repo.git") ;;
+    *) echo 'origin does not match the release repository' >&2; exit 1 ;;
+  esac
+  if git rev-parse "refs/tags/v$version" >/dev/null 2>&1; then echo 'Tag already exists' >&2; exit 1; fi
+  bun -e 'const [next,old]=process.argv.slice(1).map(v=>v.split(".").map(Number)); const i=next.findIndex((n,i)=>n!==old[i]); if(i<0||next[i]<old[i]) process.exit(1)' "$version" "$current"
+  bun -e 'for(const p of ["app/package.json","agent/package.json"]){const j=await Bun.file(p).json(); j.version=process.argv[1]; await Bun.write(p,JSON.stringify(j,null,2)+"\n")}' "$version"
+  git add app/package.json agent/package.json
+  git commit -m "release: v$version"
 fi
-
-echo "[release] version=$VERSION tag=$TAG dry_run=$DRY_RUN branch=$(git -C "$REPO" branch --show-current)"
-
-# --- version bump (skipped on dry-run) --------------------------------------
-if [ "$DRY_RUN" -eq 0 ]; then
-  for pj in "$AGENT/package.json" "$REPO/app/package.json"; do
-    sed -i.bak -E "s/\"version\": *\"[0-9]+\.[0-9]+\.[0-9]+\"/\"version\": \"$VERSION\"/" "$pj"
-    rm -f "$pj.bak"
-    echo "[release] set version=$VERSION in ${pj#"$REPO"/}"
+# Frozen installs, both suites and typechecks use the same toolchain as CI.
+(cd agent && bun install --frozen-lockfile && bun run typecheck && bun test)
+(cd app && bun install --frozen-lockfile && bun run typecheck && bun run test)
+(cd agent && POCKETSHELL_BUILD_SIGN=0 POCKETSHELL_BUILD_TARGETS=bun-linux-x64-baseline,bun-linux-arm64,bun-darwin-arm64,bun-darwin-x64 bun run build:bin)
+dist="$repo_root/agent/dist"
+platforms=(linux-x64 linux-arm64 darwin-arm64 darwin-x64)
+archives=()
+for platform in "${platforms[@]}"; do
+  binary="pocketshell-agent-$platform"
+  [ -f "$dist/$binary" ] || { echo "Missing $binary" >&2; exit 1; }
+  chmod +x "$dist/$binary"
+  archive="$dist/$binary.tar.gz"
+  tar -czf "$archive" -C "$dist" "$binary" -C "$repo_root" LICENSE THIRD-PARTY-FONTS.md THIRD-PARTY-THEMES.md
+  listing=$(tar -tzf "$archive")
+  for member in "$binary" LICENSE THIRD-PARTY-FONTS.md THIRD-PARTY-THEMES.md; do
+    [[ $'\n'"$listing"$'\n' == *$'\n'"$member"$'\n'* ]] || { echo "Archive missing $member" >&2; exit 1; }
   done
-  # 官网首屏徽标与 JSON-LD 里的版本号（英文 index.html + 中文 zh.html）。
-  # site/ 不参与构建、由 Cloudflare Pages 独立发布，所以漂了不会有任何报错——
-  # 这里静默同步，别指望别处能发现。
-  for page in "$REPO/site/index.html" "$REPO/site/zh.html"; do
-    [ -f "$page" ] || continue
-    sed -i.bak -E \
-      -e "s/v[0-9]+\.[0-9]+\.[0-9]+ · Apache-2\.0/v$VERSION · Apache-2.0/" \
-      -e "s/(\"softwareVersion\": *\")[0-9]+\.[0-9]+\.[0-9]+/\1$VERSION/" \
-      "$page"
-    rm -f "$page.bak"
-    echo "[release] set version=$VERSION in ${page#"$REPO"/}"
-  done
-fi
-
-# --- build all target binaries ----------------------------------------------
-# build:bin: vite build -> gen:embedded -> compile each target into agent/dist
-# -> restore the committed manifest stub. POCKETSHELL_BUILD_SIGN=0 keeps the
-# darwin binaries ad-hoc: the self-signed cert lives only in the release
-# machine's keychain, so signing public artifacts with it buys end users
-# nothing (their macOS doesn't trust it) and OTA re-signs on their machine —
-# while a background codesign here would block on the keychain auth prompt.
-echo "[release] building binaries (bun run build:bin, ad-hoc darwin)…"
-( cd "$AGENT" && POCKETSHELL_BUILD_SIGN=0 bun run build:bin )
-
-# --- package + checksums -----------------------------------------------------
-rm -f "$DIST"/*.tar.gz "$DIST/SHA256SUMS.txt"
-for plat in "${TARGETS[@]}"; do
-  bin="pocketshell-agent-$plat"
-  [ -f "$DIST/$bin" ] || { echo "missing built binary: $DIST/$bin" >&2; exit 1; }
-  chmod +x "$DIST/$bin"
-  # Archive carries the platform binary, LICENSE (Apache-2.0 requires the notice)
-  # and THIRD-PARTY-FONTS.md — the bundled fonts are OFL/UFL, and both licences
-  # require the copyright notice to travel with the distribution. The binary
-  # embeds the font files, so this file is the only place a user of the tarball
-  # can see them. Extracts to `./$bin` per README.
-  tar -czf "$DIST/$bin.tar.gz" -C "$DIST" "$bin" -C "$REPO" LICENSE THIRD-PARTY-FONTS.md
-  echo "[release] packaged $bin.tar.gz ($(du -h "$DIST/$bin.tar.gz" | cut -f1))"
+  archives+=("$binary.tar.gz")
 done
-( cd "$DIST" && shasum -a 256 ./*.tar.gz > SHA256SUMS.txt )
-echo "[release] SHA256SUMS.txt:"
-sed 's/^/    /' "$DIST/SHA256SUMS.txt"
-
-if [ "$DRY_RUN" -eq 1 ]; then
-  echo "[release] --dry-run complete. artifacts in $DIST (no git/gh changes made)."
+(cd "$dist" && shasum -a 256 "${archives[@]}" > SHA256SUMS.txt && shasum -a 256 -c SHA256SUMS.txt)
+case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64) native=linux-x64 ;; Linux-aarch64) native=linux-arm64 ;;
+  Darwin-arm64) native=darwin-arm64 ;; Darwin-x86_64) native=darwin-x64 ;;
+  *) echo 'Cannot verify native binary version on this host' >&2; exit 1 ;;
+esac
+built=$("$dist/pocketshell-agent-$native" --version)
+if [ "$dry_run" -eq 1 ]; then
+  [[ "$built" == "$version-"* ]] || { echo "Unexpected binary version: $built" >&2; exit 1; }
+  echo "Dry-run artifacts: $dist ($built). No commit, tag, push or publication."
   exit 0
 fi
-
-# --- commit, tag, push -------------------------------------------------------
-git -C "$REPO" add "$AGENT/package.json" "$REPO/app/package.json"
-for page in "$REPO/site/index.html" "$REPO/site/zh.html"; do
-  [ -f "$page" ] && git -C "$REPO" add "$page"
-done
-git -C "$REPO" commit \
-  -m "release: $TAG — bump version to $VERSION" \
-  -m "Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
-git -C "$REPO" tag -a "$TAG" -m "PocketShell $TAG"
-echo "[release] pushing $(git -C "$REPO" branch --show-current) + ${TAG}…"
-git -C "$REPO" push origin HEAD
-git -C "$REPO" push origin "$TAG"
-
-# --- GitHub Release ----------------------------------------------------------
+sha=$(git rev-parse --short HEAD)
+[ "$built" = "$version-$sha" ] || { echo "Version/SHA mismatch: $built" >&2; exit 1; }
+[ -z "$(git status --porcelain)" ] || { echo 'Build changed tracked source; refuse to tag' >&2; exit 1; }
+git tag -a "v$version" -m "PocketShell v$version"
+git push origin HEAD
+git push origin "v$version"
 notes_args=(--generate-notes)
-[ -n "$NOTES_FILE" ] && notes_args=(--notes-file "$NOTES_FILE")
-gh release create "$TAG" \
-  "$DIST"/*.tar.gz "$DIST/SHA256SUMS.txt" \
-  --title "PocketShell $TAG" \
-  --verify-tag \
-  "${notes_args[@]}"
-echo "[release] published: $(gh release view "$TAG" --json url -q .url)"
+[ -z "$notes_file" ] || notes_args=(--notes-file "$notes_file")
+assets=()
+for archive in "${archives[@]}"; do assets+=("$dist/$archive"); done
+gh release create "v$version" --repo "$release_repo" --verify-tag --title "PocketShell v$version" "${notes_args[@]}" "${assets[@]}" "$dist/SHA256SUMS.txt"

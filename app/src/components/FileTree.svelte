@@ -482,11 +482,11 @@
   .root-switch, .root-refresh {
     flex: 0 0 auto; width: 25px; height: 25px; display: grid; place-items: center;
     background: var(--panel); border: 1px solid var(--line-strong); color: var(--dim);
-    border-radius: var(--radius-sm); padding: 0; font-size: 0.8rem; line-height: 1;
+    border-radius: var(--radius-sm); padding: 0; font-size: var(--ui-small, 0.8rem); line-height: 1;
   }
   .root-switch:active, .root-refresh:active { background: var(--panel2); color: var(--text); }
   .path-text {
-    flex: 1; min-width: 0; font-size: 0.66rem; color: var(--dim);
+    flex: 1; min-width: 0; font-size: var(--ui-small, 0.66rem); color: var(--dim);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     /* Left-side ellipsis: the rtl container places the ellipsis at the visual
        left, while the inner <bdi> isolates the path as one LTR run so its
@@ -503,17 +503,17 @@
   .root-anchor.on { border-color: var(--accent); }
   .root-anchor.on .ring { border-color: var(--accent); }
   .root-anchor.on .ring::after { background: var(--accent); }
-  .filter { margin: 0 8px 4px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--text); padding: 6px 9px; font-size: 0.72rem; outline: none; }
+  .filter { margin: 0 8px 4px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--text); padding: 6px 9px; font-size: var(--ui-small, 0.72rem); outline: none; }
   .filter:focus { border-color: var(--accent); }
-  .ft-notice { font-size: 0.68rem; color: var(--amber); padding: 2px 10px; }
+  .ft-notice { font-size: var(--ui-small, 0.68rem); color: var(--amber); padding: 2px 10px; }
   .tree { list-style: none; margin: 0; padding: 0 8px 8px; overflow-y: auto; flex: 1; min-height: 0; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   /* 行高压到 30px：一屏能多看几行 */
   .row-wrap { display: flex; align-items: center; width: 100%; height: 30px; }
-  .row { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; color: var(--text); text-align: left; padding: 0 6px; font-size: 0.74rem; }
+  .row { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; color: var(--text); text-align: left; padding: 0 6px; font-size: var(--ui-small, 0.74rem); }
   .row:active { background: var(--panel); }
-  .more { flex: 0 0 auto; background: transparent; border: 0; color: var(--dimmer); padding: 0 6px; font-size: 0.95rem; line-height: 1; }
+  .more { flex: 0 0 auto; background: transparent; border: 0; color: var(--dimmer); padding: 0 6px; font-size: var(--ui-text, 0.95rem); line-height: 1; }
   .more:active { color: var(--text); }
-  .tw { width: 1em; color: var(--dimmer); font-size: 0.62rem; flex: 0 0 auto; }
+  .tw { width: 1em; color: var(--dimmer); font-size: var(--ui-small, 0.62rem); flex: 0 0 auto; }
   .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .nm.dir { font-weight: 600; }
   /* git 状态：行首 3px 竖色条，缩进无关，永远对齐成一列 */
@@ -531,26 +531,26 @@
     width: min(280px, 80vw); text-align: center;
     box-shadow: var(--pop-shadow);
   }
-  .dlg-title { font-size: 0.85rem; font-weight: 700; margin-bottom: 6px; }
-  .dlg-path { font-size: 0.7rem; color: var(--text); margin-bottom: 6px; word-break: break-all; }
-  .dlg-hint { font-size: 0.68rem; color: var(--amber); margin-bottom: 16px; }
+  .dlg-title { font-size: var(--ui-text, 0.85rem); font-weight: 700; margin-bottom: 6px; }
+  .dlg-path { font-size: var(--ui-small, 0.7rem); color: var(--text); margin-bottom: 6px; word-break: break-all; }
+  .dlg-hint { font-size: var(--ui-small, 0.68rem); color: var(--amber); margin-bottom: 16px; }
   .dlg-btns { display: flex; gap: 8px; }
-  .dlg-btns button { flex: 1; padding: 9px 0; border-radius: var(--radius-md); border: 1px solid var(--line); font-size: 0.75rem; background: var(--key); color: var(--text); }
+  .dlg-btns button { flex: 1; padding: 9px 0; border-radius: var(--radius-md); border: 1px solid var(--line); font-size: var(--ui-small, 0.75rem); background: var(--key); color: var(--text); }
   .dlg-btns button.danger { background: var(--red); color: var(--on-danger); border-color: transparent; }
   .dlg-btns button.danger.armed { outline: 2px solid var(--amber); }
-  .nf-input { width: 100%; box-sizing: border-box; margin-bottom: 14px; background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--text); padding: 8px 10px; font-size: 0.75rem; }
+  .nf-input { width: 100%; box-sizing: border-box; margin-bottom: 14px; background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--text); padding: 8px 10px; font-size: var(--ui-small, 0.75rem); }
   .dlg-btns button.ok { background: var(--primary-bg); color: var(--primary-text); border-color: transparent; font-weight: 700; }
   .dlg-btns button.ok:disabled { opacity: 0.5; }
 
   /* 打包提示：一行极淡文字，不遮挡也不锁交互（14 期需求 5 替换全屏遮罩）。 */
-  .arch-txt { color: var(--dim); font-size: 0.68rem; padding: 4px 8px; }
+  .arch-txt { color: var(--dim); font-size: var(--ui-small, 0.68rem); padding: 4px 8px; }
   /* 展开中的骨架占位行：跟着该目录的层级缩进，视觉上就是"这几行将出现在这里"。 */
   .sk-wrap { display: block; padding-right: 8px; }
 
   .hist-list { list-style: none; margin: 0 0 14px; padding: 0; max-height: 44vh; overflow-y: auto; text-align: left; }
   .hist-list li { margin-bottom: 5px; }
-  .hist-item { width: 100%; text-align: left; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius-md); padding: 8px 10px; font-size: 0.7rem; word-break: break-all; }
+  .hist-item { width: 100%; text-align: left; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius-md); padding: 8px 10px; font-size: var(--ui-small, 0.7rem); word-break: break-all; }
   .hist-item.cur { border-color: var(--accent); color: var(--accent-text); }
   .hist-item:disabled { opacity: 0.7; }
-  .hist-empty { color: var(--dim); font-size: 0.72rem; margin-bottom: 14px; }
+  .hist-empty { color: var(--dim); font-size: var(--ui-small, 0.72rem); margin-bottom: 14px; }
 </style>

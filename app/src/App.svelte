@@ -79,6 +79,10 @@
     else document.exitFullscreen?.().catch(() => {});
   }
   let settings = $state<Settings>(loadSettings());
+  $effect(() => {
+    document.documentElement.dataset.eink = String(settings.eink ?? false);
+    document.documentElement.dataset.uiSize = settings.uiSize ?? "compact";
+  });
   let fileTabs = $state<TopTab[]>([]);
   let tabOrder = $state<string[]>([]);
   let activeTop = $state("");
@@ -1115,6 +1119,7 @@
          文字，所以 aria-label/title 必须保留 app.status.* 三条文案。 -->
     <div class="conn conn-{status}" role="status" aria-label={$t('app.status.' + status)} title={$t('app.status.' + status)}>
       <span class="conn-dot"></span>
+      {#if settings.eink}<span class="conn-label">{$t('app.status.' + status)}</span>{/if}
     </div>
     <button class="fs-btn" aria-label={pageFullscreen ? $t('app.fullscreen.exit') : $t('app.fullscreen.enter')} onclick={togglePageFullscreen}>
       {#if pageFullscreen}
@@ -1150,6 +1155,7 @@
         active={activeTopId === s.name}
         streaming={streamingSessions.has(s.name)}
         closed={s.closed ?? false}
+        eink={settings.eink}
         fontSize={settings.fontSize}
         fontFamily={settings.fontFamily}
         historyLines={settings.historyLines}
@@ -1321,6 +1327,10 @@
   }
   .brand b { color: var(--brand-sig); font-weight: 700; }
   .version {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 0.56rem;
     color: var(--dimmer);
     font-weight: 500;
@@ -1496,4 +1506,7 @@
   }
   .toast.has-detail { white-space: normal; max-width: min(78vw, 320px); text-align: center; border-radius: var(--radius-lg); }
   .toast-detail { font-size: 0.66rem; color: var(--dim); margin-top: 4px; word-break: break-all; line-height: 1.5; }
+  .conn-label { font-size: var(--ui-small, 12px); color: var(--text); margin-left: 6px; white-space: nowrap; }
+  :global(:root[data-eink="true"]) .conn { display: flex; align-items: center; width: auto; height: auto; }
+  :global(:root[data-eink="true"]) .fs-btn { min-width: 44px; min-height: 44px; }
 </style>

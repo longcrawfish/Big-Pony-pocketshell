@@ -53,6 +53,9 @@
     border-radius: var(--radius-xl);
     padding: 4px 0;
     min-width: 160px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
     box-shadow: var(--pop-shadow);
     display: flex;
     flex-direction: column;
@@ -61,7 +64,9 @@
     background: transparent;
     border: 0;
     padding: 9px 14px;
-    font-size: 0.73rem;
+    min-height: var(--ui-touch, 32px);
+    overflow-wrap: anywhere;
+    font-size: var(--ui-small, 0.73rem);
     color: var(--text);
     text-align: left;
     display: flex;
@@ -71,5 +76,5 @@
   .ctxmenu button:active { background: var(--keyhi); }
   .ctxmenu .danger { color: var(--red); }
   .ctxmenu .sep { height: 1px; background: var(--line); margin: 3px 0; }
-  .ic { font-size: 0.8rem; }
+  .ic { font-size: var(--ui-small, 0.8rem); }
 </style>

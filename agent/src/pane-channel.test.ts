@@ -144,12 +144,12 @@ describe("PaneChannel —— 与 tmux 的交互", () => {
     expect(s.calls).toEqual([]);
   });
 
-  it("resize 落到 resize-window", () => {
+  it("output channel resize cannot mutate window policy", () => {
     const s = spy();
     const ch = new PaneChannel("dev", { tmux: s.tmux, tmuxAsync: s.tmuxAsync, runDir: mkdir() });
     s.calls.length = 0;
     ch.resize(100, 40);
-    expect(s.calls).toContainEqual(["resize-window", "-t", "dev", "-x", "100", "-y", "40"]);
+    expect(s.calls).toEqual([]);
     ch.kill();
   });
 

@@ -14,7 +14,7 @@
   import { listThemes, customThemeInfo, applyThemeAsync, type ThemeEntry } from "../lib/theme";
   import { customThemeName } from "../lib/theme-css";
   import { FONTS, applyFont } from "../lib/font";
-  import { KB_LAYOUTS, HISTORY_LINE_CHOICES } from "../lib/settings";
+  import { KB_LAYOUTS, HISTORY_LINE_CHOICES, UI_SIZES, setEink } from "../lib/settings";
   import { resetTutorial } from "../lib/term/kb-tutorial";
 
   let { conn, settings, onChange, currentVersion, onCheckUpdate }: {
@@ -425,6 +425,24 @@
     </button>
   </div>
 
+  <div class="set">
+    <div class="grow"><div class="label">{$t('settings.eink.label')}</div>
+      <div class="desc">{$t('settings.eink.desc')}</div></div>
+    <button class="btn" role="switch" aria-checked={settings.eink}
+      onclick={() => onChange(setEink(settings, !settings.eink))}>
+      {settings.eink ? $t('settings.eink.on') : $t('settings.eink.off')}
+    </button>
+  </div>
+  <div class="set">
+    <div class="grow"><div class="label">{$t('settings.uiSize.label')}</div></div>
+    <div class="seg">
+      {#each UI_SIZES as size}
+        <button class:on={settings.uiSize === size} aria-pressed={settings.uiSize === size}
+          onclick={() => update("uiSize", size)}>{$t(`settings.uiSize.${size}`)}</button>
+      {/each}
+    </div>
+  </div>
+
   <!-- Theme. A row per palette rather than the usual .seg: seven segments do not
        fit at 390px (and overflow outright in English), and a colour scheme is
        the one setting worth previewing before you pick it. -->
@@ -557,7 +575,7 @@
       <div class="label">{$t('settings.fontSize.label')}</div>
       <div class="desc">{$t('settings.fontSize.desc')}</div>
     </div>
-    <input type="range" min="10" max="18" step="0.5" value={settings.fontSize}
+    <input type="range" min="10" max="24" step="0.5" value={settings.fontSize}
       oninput={(e) => update("fontSize", Number((e.target as HTMLInputElement).value))} />
     <span class="val">{settings.fontSize}</span>
   </div>
@@ -807,13 +825,13 @@
     min-height: 44px;
     padding: 8px 2px;
     border-bottom: 1px solid var(--line);
-    font-size: 13px;
+    font-size: var(--ui-text, 13px);
   }
   /* Stacked variant: label on top, control below (theme picker). */
   .set.col { flex-direction: column; align-items: stretch; gap: 8px; }
   .grow { flex: 1; min-width: 0; }
-  .label { font-size: 13px; }
-  .desc { font-size: 10.5px; color: var(--dim); margin-top: 2px; line-height: 1.4; }
+  .label { font-size: var(--ui-text, 13px); }
+  .desc { font-size: var(--ui-small, 10.5px); color: var(--dim); margin-top: 2px; line-height: 1.4; }
 
   /* ---- Theme picker ---- */
   .themes {
@@ -835,7 +853,7 @@
     border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text);
-    font-size: 12.5px;
+    font-size: var(--ui-small, 12.5px);
     text-align: left;
     flex: 1;
     min-width: 0;
@@ -859,7 +877,7 @@
   }
   .cbadge {
     font-style: normal;
-    font-size: 9px;
+    font-size: var(--ui-small, 9px);
     color: var(--dim);
     border: 1px solid var(--line-strong);
     border-radius: 3px;
@@ -872,24 +890,24 @@
     background: transparent;
     color: var(--dim);
     border: 0;
-    font-size: 15px;
+    font-size: var(--ui-text, 15px);
     line-height: 1;
     padding: 8px 9px;
     border-radius: var(--radius-sm);
   }
   .tdel:active { color: var(--red); background: var(--red-soft); }
-  .tnote { color: var(--dim); font-size: 10.5px; line-height: 1.5; margin: 6px 2px 0; }
+  .tnote { color: var(--dim); font-size: var(--ui-small, 10.5px); line-height: 1.5; margin: 6px 2px 0; }
   .tnote.warn { color: var(--amber); }
   .tskips {
     list-style: none;
     margin: 3px 2px 0;
     color: var(--dim);
-    font-size: 10px;
+    font-size: var(--ui-small, 10px);
     line-height: 1.6;
     word-break: break-all;
   }
   .timport-head { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-  .tmsg { font-size: 10.5px; color: var(--red); flex: 1; min-width: 0; }
+  .tmsg { font-size: var(--ui-small, 10.5px); color: var(--red); flex: 1; min-width: 0; }
   .tmsg.ok { color: var(--ok); }
   .timport {
     display: flex;
@@ -907,12 +925,12 @@
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
     padding: 7px;
-    font-size: 0.78rem;
+    font-size: var(--ui-small, 0.78rem);
     font-family: inherit;
     outline: none;
     resize: none;
   }
-  .timport textarea { font-family: var(--font-mono); font-size: 0.7rem; }
+  .timport textarea { font-family: var(--font-mono); font-size: var(--ui-small, 0.7rem); }
   .timport input:focus, .timport textarea:focus { border-color: var(--accent); }
   /* Radio dot: filled ring when picked. Colour is the only cue in the swatch
      row, so the dot carries the state redundantly (not colour-only). */
@@ -931,11 +949,11 @@
     background: var(--accent);
   }
   .tname { flex: 1; min-width: 0; }
-  .tname s { display: block; text-decoration: none; font-size: 10px; color: var(--dim); margin-top: 1px; }
+  .tname s { display: block; text-decoration: none; font-size: var(--ui-small, 10px); color: var(--dim); margin-top: 1px; }
   /* 字体预览。刻意不跟随 --font-mono：每行要展示的是**它自己那套**。 */
   .fprev {
     margin-left: auto;
-    font-size: 0.72rem;
+    font-size: var(--ui-small, 0.72rem);
     color: var(--dim);
     white-space: nowrap;
     letter-spacing: 0.02em;
@@ -950,12 +968,12 @@
   }
   .tag {
     flex: 0 0 auto;
-    font-size: 9.5px;
+    font-size: var(--ui-small, 9.5px);
     color: var(--dimmer);
     min-width: 1.6em;
     text-align: right;
   }
-  .val { font-size: 11px; color: var(--dim); min-width: 2.4em; text-align: right; font-family: var(--font-mono); }
+  .val { font-size: var(--ui-small, 11px); color: var(--dim); min-width: 2.4em; text-align: right; font-family: var(--font-mono); }
   input[type="range"] { width: 104px; accent-color: var(--accent); }
   .seg {
     display: flex;
@@ -971,7 +989,7 @@
     border: 0;
     color: var(--dim);
     padding: 5px 10px;
-    font-size: 11.5px;
+    font-size: var(--ui-small, 11.5px);
     border-radius: var(--radius-sm);
     white-space: nowrap;
   }
@@ -988,7 +1006,7 @@
     border: 1px solid var(--line-strong);
     border-radius: var(--radius-sm);
     padding: 6px 12px;
-    font-size: 12px;
+    font-size: var(--ui-small, 12px);
     font-weight: 500;
     cursor: pointer;
     flex: 0 0 auto;
@@ -1006,14 +1024,14 @@
     cursor: pointer;
   }
   .notify-head .label { color: var(--accent); font-weight: 600; }
-  .chev { color: var(--dim); font-size: 0.8rem; }
-  .err { color: var(--red); font-size: 11px; margin-top: 3px; }
-  .nt-hint { color: var(--dim); font-size: 0.66rem; margin-top: 6px; line-height: 1.5; }
+  .chev { color: var(--dim); font-size: var(--ui-small, 0.8rem); }
+  .err { color: var(--red); font-size: var(--ui-small, 11px); margin-top: 3px; }
+  .nt-hint { color: var(--dim); font-size: var(--ui-small, 0.66rem); margin-top: 6px; line-height: 1.5; }
   /* 分区标题走共同设计语言：mono 大写小标题 */
   .nsub {
     color: var(--dimmer);
     font-family: var(--font-mono);
-    font-size: 0.6rem;
+    font-size: var(--ui-small, 0.6rem);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -1026,7 +1044,7 @@
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
     padding: 5px 11px;
-    font-size: 0.72rem;
+    font-size: var(--ui-small, 0.72rem);
     font-weight: 600;
   }
   .wh-form, .wh-row {
@@ -1046,7 +1064,7 @@
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
     padding: 7px;
-    font-size: 0.78rem;
+    font-size: var(--ui-small, 0.78rem);
     font-family: inherit;
     outline: none;
   }
@@ -1069,12 +1087,12 @@
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
     padding: 4px 9px;
-    font-size: 0.9rem;
+    font-size: var(--ui-text, 0.9rem);
   }
   .wh-actions { display: flex; align-items: center; gap: 8px; }
-  .wh-test-msg { font-size: 0.68rem; color: var(--red); }
+  .wh-test-msg { font-size: var(--ui-small, 0.68rem); color: var(--red); }
   .wh-test-msg.ok { color: var(--ok); }
-  .wh-empty { color: var(--dim); font-size: 0.72rem; text-align: center; padding: 14px 0; }
+  .wh-empty { color: var(--dim); font-size: var(--ui-small, 0.72rem); text-align: center; padding: 14px 0; }
   .dedupe-input {
     width: 70px;
     background: var(--bg);
@@ -1082,6 +1100,14 @@
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
     padding: 6px;
-    font-size: 13px;
+    font-size: var(--ui-text, 13px);
   }
+  :global(:root:not([data-ui-size="compact"])) .set { flex-wrap: wrap; align-items: flex-start; }
+  :global(:root:not([data-ui-size="compact"])) .grow { min-width: min(100%, 12rem); }
+  :global(:root:not([data-ui-size="compact"])) .seg { flex-wrap: wrap; max-width: 100%; }
+  :global(:root:not([data-ui-size="compact"])) .seg button,
+  :global(:root:not([data-ui-size="compact"])) .btn,
+  :global(:root:not([data-ui-size="compact"])) .theme { min-height: 44px; }
+  :global(:root:not([data-ui-size="compact"])) .theme { flex-wrap: wrap; }
+  :global(:root:not([data-ui-size="compact"])) .fprev { overflow-wrap: anywhere; }
 </style>

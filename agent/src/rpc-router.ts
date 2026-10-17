@@ -1,3 +1,4 @@
+import type { SizeActor } from "./size-control";
 // Table-driven RPC routing, lifted verbatim out of server.ts's `case "rpc":`
 // switch (which had grown to 34 methods of hand-written `String(p.xxx)`
 // boilerplate behind a single `as any`).
@@ -58,6 +59,7 @@ export interface RpcServices {
 
 /** Per-request state: who asked, and how to answer them. */
 export interface RpcCall {
+  sizeActor?: SizeActor;
   id: string;
   /** Noise static pubkey of the calling device (null before/without one). */
   devicePub: string | null;
@@ -380,7 +382,7 @@ export const RPC_TABLE: Record<string, RpcHandler> = {
   },
   "term.redraw": (ctx, p) => {
     const sid = parse.session(p).session;
-    return ok(ctx.shell.has(sid) ? { ok: true } : ctx.terminal.redraw(sid));
+    return ok(ctx.shell.has(sid) ? { ok: true } : ctx.terminal.redraw(sid, ctx.sizeActor, typeof p?.sizeToken === "string" ? p.sizeToken : undefined));
   },
   "terminal.pwd": (ctx, p) => {
     const sid = parse.session(p).session;
@@ -476,12 +478,13 @@ export const RPC_TABLE: Record<string, RpcHandler> = {
     void (async () => {
       try {
         const cached = readCache(ctx.config.keyDir);
+        const repo = ctx.config.update?.repo ?? null;
         let out: CachedCheck;
-        if (!force && isFresh(cached, Date.now(), CHECK_TTL_MS)) {
+        if (!force && cached?.current === AGENT_VERSION && cached.repo === repo && isFresh(cached, Date.now(), CHECK_TTL_MS)) {
           out = cached as CachedCheck;
         } else {
-          const r = await checkLatest({ repo: ctx.config.update?.repo ?? null, current: AGENT_VERSION });
-          out = { ...r, checkedAt: Date.now() };
+          const r = await checkLatest({ repo, current: AGENT_VERSION });
+          out = { ...r, repo, checkedAt: Date.now() };
           writeCache(ctx.config.keyDir, out);
         }
         ctx.sendResult(out);

@@ -1,3 +1,4 @@
+import { tmuxCommand } from "./tmux-command";
 // macOS TCC warmup (fallback for "grants lost after an update"): probe the
 // protected domains right after startup so any authorization prompts cluster
 // at boot instead of surprising the user mid-task. Every probe is read-only
@@ -22,7 +23,7 @@ const TCC_DIRS = ["Documents", "Desktop", "Downloads"] as const;
 
 const defaultTmux = (args: string[]): { exitCode: number } => {
   try {
-    const r = Bun.spawnSync(["tmux", ...args]);
+    const r = Bun.spawnSync(tmuxCommand(args));
     return { exitCode: r.exitCode ?? 1 };
   } catch {
     return { exitCode: 1 };

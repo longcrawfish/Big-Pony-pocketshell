@@ -211,7 +211,7 @@
     flex: none; display: flex; align-items: center; gap: 7px;
     padding: 6px 13px 7px; border: 1px solid transparent; border-bottom: none;
     border-radius: 6px 6px 0 0; background: var(--tab-bg); color: var(--dim);
-    font-size: 0.72rem; white-space: nowrap; scroll-snap-align: start;
+    font-size: var(--ui-small, 0.72rem); white-space: nowrap; scroll-snap-align: start;
     position: relative;
     /* 会话名与任务面板里的同一个名字（.name.mono）保持同一种字 */
     font-family: var(--font-mono);
@@ -229,7 +229,7 @@
   }
   .tab.closed { opacity: 0.7; }
   .x {
-    color: var(--dim); font-size: 0.85rem; line-height: 1;
+    color: var(--dim); font-size: var(--ui-text, 0.85rem); line-height: 1;
     margin: -2px -6px -2px 0; padding: 3px 5px;
   }
   .x:active { color: var(--text); }
@@ -242,7 +242,7 @@
   .add {
     flex: none; background: transparent; border: 0;
     color: var(--dim); width: 30px; height: 30px;
-    padding: 0 0 6px; font-size: 1rem; line-height: 1;
+    padding: 0 0 6px; font-size: var(--ui-text, 1rem); line-height: 1;
     font-family: var(--font-mono);
   }
   .add:active { color: var(--text); }
@@ -250,16 +250,17 @@
   .overlay { position: fixed; inset: 0; z-index: 40; background: var(--overlay-bg); display: flex; justify-content: center; align-items: flex-start; }
   .overlay .dlg { margin-top: 14vh; }
   .kind-seg { display: flex; gap: 2px; background: var(--seg-bg); border: 1px solid var(--seg-line); border-radius: 999px; padding: 2px; margin-bottom: 12px; }
-  .kind-seg button { flex: 1; background: transparent; border: 0; color: var(--dim); padding: 6px 0; font-size: 0.72rem; border-radius: 999px; }
+  .kind-seg button { flex: 1; background: transparent; border: 0; color: var(--dim); padding: 6px 0; font-size: var(--ui-small, 0.72rem); border-radius: 999px; }
   .kind-seg button.on { background: var(--seg-active-bg); color: var(--seg-active-text); font-weight: 600; box-shadow: var(--seg-shadow); }
-  .sh-glyph { color: var(--accent); font-size: 0.7rem; }
+  .sh-glyph { color: var(--accent); font-size: var(--ui-small, 0.7rem); }
   .dlg { background: var(--dlg-bg); border: 1px solid var(--line); border-radius: var(--radius-xl); padding: 20px; width: min(280px, 82vw); text-align: center; box-shadow: var(--pop-shadow); }
-  .dlg-title { font-size: 0.85rem; font-weight: 700; margin-bottom: 10px; }
-  .dlg-hint { font-size: 0.7rem; color: var(--dim); margin-bottom: 14px; line-height: 1.5; }
-  .dlg-input { width: 100%; box-sizing: border-box; background: var(--panel2); border: 1px solid var(--line-strong); border-radius: var(--radius-md); color: var(--text); padding: 8px 10px; font-size: 0.8rem; margin-bottom: 14px; outline: none; }
+  .dlg-title { font-size: var(--ui-text, 0.85rem); font-weight: 700; margin-bottom: 10px; }
+  .dlg-hint { font-size: var(--ui-small, 0.7rem); color: var(--dim); margin-bottom: 14px; line-height: 1.5; }
+  .dlg-input { width: 100%; box-sizing: border-box; background: var(--panel2); border: 1px solid var(--line-strong); border-radius: var(--radius-md); color: var(--text); padding: 8px 10px; font-size: var(--ui-small, 0.8rem); margin-bottom: 14px; outline: none; }
   .dlg-input:focus { border-color: var(--accent); }
   .dlg-btns { display: flex; gap: 8px; }
-  .dlg-btns button { flex: 1; padding: 9px 0; border-radius: var(--radius-md); border: 1px solid var(--line); font-size: 0.75rem; background: var(--key); color: var(--text); }
-  .dirty-warn { color: var(--amber); font-size: 0.7rem; margin-top: 6px; }
+  .dlg-btns button { flex: 1; padding: 9px 0; border-radius: var(--radius-md); border: 1px solid var(--line); font-size: var(--ui-small, 0.75rem); background: var(--key); color: var(--text); }
+  .dirty-warn { color: var(--amber); font-size: var(--ui-small, 0.7rem); margin-top: 6px; }
   .dlg-btns button.primary { background: var(--primary-bg); color: var(--primary-text); border-color: transparent; font-weight: 600; }
+:global(:root:not([data-ui-size="compact"])) button { min-height: 44px; min-width: 44px; }
 </style>

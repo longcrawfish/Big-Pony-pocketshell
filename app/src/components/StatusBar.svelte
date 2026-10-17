@@ -99,7 +99,7 @@
 <style>
   .bar {
     flex: 0 0 auto;
-    height: 22px;
+    min-height: var(--ui-touch, 22px);
     display: flex;
     align-items: center;
     gap: 10px;
@@ -108,7 +108,7 @@
     background: var(--bar-bg);
     border-top: 1px solid var(--line);
     color: var(--bar-text);
-    font-size: 9.5px;
+    font-size: var(--ui-small, 9.5px);
     letter-spacing: 0.05em;
     /* 手势目标：禁用原生滚动手势，否则拖拽会被解析成页面滚动 */
     touch-action: none;
@@ -151,7 +151,7 @@
     position: absolute;
     left: 50%;
     translate: -50% 0;
-    bottom: 24px;
+    bottom: calc(var(--ui-touch, 22px) + 2px);
     z-index: 5;
     display: flex;
     align-items: center;
@@ -161,7 +161,7 @@
     border: 1px solid var(--line-strong);
     border-radius: var(--radius-sm);
     padding: 5px 9px;
-    font-size: 9.5px;
+    font-size: var(--ui-small, 9.5px);
     color: var(--text);
     box-shadow: var(--pop-shadow);
   }
@@ -182,7 +182,7 @@
     background: transparent;
     border: 0;
     color: var(--dimmer);
-    font-size: 12px;
+    font-size: var(--ui-small, 12px);
     line-height: 1;
     padding: 0 2px;
   }

@@ -10,7 +10,7 @@ import { encodedBytes, chunkRpcPayload, RPC_FIT_SAFE_BYTES } from "./rpc-fit";
 // （45KiB 的 payload = 61528 B，超出 RPC_FIT_SAFE_BYTES=61440 整 88 字节），
 // 降幅比单帧路径高得多。用统一区间会挂。
 
-const gz = (b: Uint8Array) => Bun.gzipSync(b);
+const gz = (b: Uint8Array) => Bun.gzipSync(new Uint8Array(b));
 
 test("rpcZip 单帧：二进制承载相对 base64 承载省 24~26%", () => {
   let s = 0x1234;

@@ -33,7 +33,7 @@ async function tail(env: { os_part: string; BIN_DIR: string; PATH: string; uid: 
     `os_part='${env.os_part}'`,
     `BIN_DIR='${env.BIN_DIR}'`,
     `PATH='${env.PATH}'`,
-    `REPO=Big-Pony/pocketshell`,
+    `REPO=longcrawfish/Big-Pony-pocketshell`,
     `say() { printf '%s\\n' "$*"; }`,
     `id() { echo '${env.uid}'; }`,
     body,

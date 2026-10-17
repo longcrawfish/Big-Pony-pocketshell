@@ -28,13 +28,21 @@ export type BuiltinTheme =
   | "tokyonight"    // Tokyo Night（深）
   | "nord"          // Nord（深）
   | "mocha"         // Catppuccin Mocha（深）
+  | "eink"
   | "blackout";     // Black Metal 改编（深，OLED 纯黑）
 
 export type ThemePref = BuiltinTheme | "system" | `custom:${string}`;
 export type Language = "zh" | "en";
 export type VibrateLevel = "off" | "light" | "medium" | "strong";
 
+export type UiSize = "compact" | "comfortable" | "large";
+export type DisplayPrefs = Pick<Settings, "theme" | "fontSize" | "uiSize" | "kbLayout">;
+
 export interface Settings {
+  eink: boolean;
+  uiSize: UiSize;
+  normalDisplay?: DisplayPrefs;
+  einkDisplay?: DisplayPrefs;
   layout: "mac" | "win";
   /**
    * 全键盘的键位布局。与 `layout`（Mac/Win 键帽标注）是两回事：
@@ -75,6 +83,8 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  eink: false,
+  uiSize: "compact",
   layout: "mac",
   kbLayout: "classic",
   fontSize: 10,
@@ -104,7 +114,7 @@ function coerceHistoryLines(v: unknown): number {
 
 /** 菜单序：内置 7 套在前，"system" 收尾。自定义主题由 CSS 清单动态追加。 */
 export const THEMES: ThemePref[] = [
-  "cream-dark", "cream-light", "gruvbox-dark", "tokyonight", "nord", "mocha", "blackout", "system",
+  "cream-dark", "cream-light", "gruvbox-dark", "tokyonight", "nord", "mocha", "blackout", "eink", "system",
 ];
 const LANGS: Language[] = ["zh", "en"];
 const VIBES: VibrateLevel[] = ["off", "light", "medium", "strong"];
@@ -193,7 +203,9 @@ export function loadSettings(store: Storage = localStorage): Settings {
     const parsed = JSON.parse(raw);
     const s: Settings = {
       layout: parsed.layout === "win" ? "win" : "mac",
-      fontSize: typeof parsed.fontSize === "number" ? parsed.fontSize : DEFAULT_SETTINGS.fontSize,
+      fontSize: coerceFontSize(parsed.fontSize),
+      eink: parsed.eink === true,
+      uiSize: coerceUiSize(parsed.uiSize),
       historyLines: coerceHistoryLines(parsed.historyLines),
       vibrate: coerceVibrate(parsed.vibrate),
       theme: coerceTheme(parsed.theme),
@@ -205,6 +217,8 @@ export function loadSettings(store: Storage = localStorage): Settings {
     };
     // 只在真有值时挂上，缺省保持 undefined —— 这样 `toEqual(DEFAULT_SETTINGS)`
     // 之类的断言不会被两个可选字段搅乱。
+    if (parsed.normalDisplay) s.normalDisplay = coerceDisplay(parsed.normalDisplay);
+    if (parsed.einkDisplay) s.einkDisplay = coerceDisplay(parsed.einkDisplay);
     const bootBg = coerceBootValue(parsed.bootBg);
     if (bootBg) s.bootBg = bootBg;
     const scheme = parsed.scheme === "light" || parsed.scheme === "dark" ? parsed.scheme : undefined;
@@ -219,4 +233,30 @@ export function loadSettings(store: Storage = localStorage): Settings {
 
 export function saveSettings(s: Settings, store: Storage = localStorage): void {
   store.setItem(KEY, JSON.stringify(s));
+}
+
+export const UI_SIZES: UiSize[] = ["compact", "comfortable", "large"];
+export function coerceFontSize(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v)
+    ? Math.round(Math.max(10, Math.min(24, v)) * 2) / 2 : DEFAULT_SETTINGS.fontSize;
+}
+function coerceUiSize(v: unknown): UiSize {
+  return UI_SIZES.includes(v as UiSize) ? v as UiSize : "compact";
+}
+function coerceDisplay(v: Partial<DisplayPrefs>): DisplayPrefs {
+  return { theme: coerceTheme(v.theme), fontSize: coerceFontSize(v.fontSize),
+    uiSize: coerceUiSize(v.uiSize), kbLayout: coerceKbLayout(v.kbLayout) };
+}
+/** Each mode remembers its own theme, sizes and keyboard, including manual edits. */
+export function setEink(s: Settings, enabled: boolean): Settings {
+  if (enabled === s.eink) return s;
+  const current = coerceDisplay(s);
+  if (enabled) return { ...s, normalDisplay: current, eink: true,
+    ...(s.einkDisplay ?? { theme: "eink", fontSize: 18, uiSize: "comfortable", kbLayout: "layered" }) };
+  return { ...s, einkDisplay: current, eink: false,
+    ...(s.normalDisplay ?? coerceDisplay(DEFAULT_SETTINGS)) };
+}
+export function applyDisplay(s: Settings): void {
+  document.documentElement.dataset.eink = String(s.eink);
+  document.documentElement.dataset.uiSize = s.uiSize;
 }

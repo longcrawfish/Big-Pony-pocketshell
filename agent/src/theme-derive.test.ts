@@ -630,7 +630,7 @@ describe("token set matches the app", () => {
     // 安全区同类，声明在 app.css，由 app.css.test.ts 守住），--i 是 Skeleton.svelte
     // 内部定义并消费的行序号（用来错开动画相位），同 --phone-h/--key-gap-* 一样是
     // 组件局部自定义属性，不是颜色。
-    const NOT_A_THEME_TOKEN = /^--(radius-|safe-|ps-|sw-|boot-|font-|key-gap-|dur-|ease-|phone-h$|i$)/;
+    const NOT_A_THEME_TOKEN = /^--(ui-|radius-|safe-|ps-|sw-|boot-|font-|key-gap-|dur-|ease-|phone-h$|i$)/;
     const needed = [...referenced].filter((t) => !NOT_A_THEME_TOKEN.test(t)).sort();
     const produced = new Set(TOKEN_NAMES);
 

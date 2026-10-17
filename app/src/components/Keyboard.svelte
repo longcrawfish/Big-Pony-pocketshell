@@ -571,7 +571,7 @@
     border: 0;
     border-radius: var(--radius-sm);
     padding: 7px 0;
-    font-size: 0.68rem;
+    font-size: var(--ui-small, 0.68rem);
     transition: background 0.15s, color 0.15s;
   }
   .subtabs button.on {
@@ -592,7 +592,7 @@
     flex: 0 0 auto;
     min-width: 3em;
     min-height: 2.3em;
-    font-size: 0.62rem;
+    font-size: var(--ui-small, 0.62rem);
   }
   .fkeys {
     display: flex;
@@ -607,7 +607,7 @@
     flex: 1 1 0;
     min-width: 2.4em;
     min-height: 2.3em;
-    font-size: 0.62rem;
+    font-size: var(--ui-small, 0.62rem);
   }
   .hints {
     display: flex;
@@ -627,7 +627,7 @@
     border: 1px solid var(--line-soft);
     border-radius: 999px;
     padding: 5px 11px;
-    font-size: 0.7rem;
+    font-size: var(--ui-small, 0.7rem);
     /* pan-x：把横向滚动交还给浏览器（含惯性），我们不自己实现滚动。
        原先是 none，直接禁掉了原生滚动——这是「联想区滚不动」的另一半原因。 */
     touch-action: pan-x;
@@ -661,7 +661,7 @@
     border-radius: var(--radius-sm);
     box-shadow: var(--key-shadow), var(--key-inset);
     padding: 4px 0;
-    font-size: 0.72rem;
+    font-size: var(--ui-small, 0.72rem);
     touch-action: none;
     user-select: none;
     display: flex;
@@ -680,7 +680,7 @@
   }
   .key.mod {
     background: var(--key-mod-bg);
-    font-size: 0.58rem;
+    font-size: var(--ui-small, 0.58rem);
     color: var(--dim);
   }
   .key.mod.on {
@@ -706,7 +706,7 @@
     font-size: inherit;
   }
   .key .up {
-    font-size: 0.55rem;
+    font-size: var(--ui-small, 0.55rem);
     color: var(--dim);
     line-height: 1;
   }
@@ -736,7 +736,7 @@
     padding: 8px 10px;
   }
   .target {
-    font-size: 0.7rem;
+    font-size: var(--ui-small, 0.7rem);
     color: var(--dim);
   }
   .ime textarea {
@@ -747,7 +747,7 @@
     border-radius: var(--radius-lg);
     color: var(--text);
     padding: 10px;
-    font-size: 0.85rem;
+    font-size: var(--ui-text, 0.85rem);
     resize: none;
     font-family: inherit;
     outline: none;
@@ -764,7 +764,7 @@
     border: 0;
     border-radius: var(--radius-md);
     padding: 8px 14px;
-    font-size: 0.78rem;
+    font-size: var(--ui-small, 0.78rem);
   }
   .ime-actions .send {
     background: var(--primary-bg);
@@ -777,7 +777,7 @@
     color: var(--text);
   }
   .hint {
-    font-size: 0.68rem;
+    font-size: var(--ui-small, 0.68rem);
     color: var(--dim);
     line-height: 1.6;
   }
@@ -794,7 +794,7 @@
     grid-template-columns: repeat(4, 1fr);
     gap: 4px;
   }
-  .ops-row .act { padding: 10px 0; font-size: 0.72rem; }
+  .ops-row .act { padding: 10px 0; font-size: var(--ui-small, 0.72rem); }
   .ops-main {
     display: flex;
     gap: 6px;
@@ -817,7 +817,7 @@
   .dpad .down { grid-area: down; }
   .dpad .key {
     min-height: 3em;
-    font-size: 0.8rem;
+    font-size: var(--ui-small, 0.8rem);
     padding: 0 2px;
   }
   .dpad .enter-center {
@@ -834,20 +834,20 @@
     gap: 4px;
     flex: 1 1 0;
   }
-  .ops-nav2 .key { min-height: 3em; font-size: 0.75rem; }
+  .ops-nav2 .key { min-height: 3em; font-size: var(--ui-small, 0.75rem); }
   .ops-bottom {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 4px;
   }
-  .ops-bottom .key { min-height: 2.6em; font-size: 0.74rem; }
+  .ops-bottom .key { min-height: 2.6em; font-size: var(--ui-small, 0.74rem); }
   .act {
     background: var(--key);
     color: var(--key-text);
     border: 1px solid var(--key-line);
     border-radius: var(--radius-md);
     padding: 6px 0;
-    font-size: 0.72rem;
+    font-size: var(--ui-small, 0.72rem);
   }
 
   /* ---- 大键位布局（layered / flick）----
@@ -892,8 +892,8 @@
   /* 行内键撑满行高。**不设 min-height**：键的下限会顶破被 flex 压扁的行，
      多出来的那几 px 直接变成整个键区的溢出（方向键行又被推出可视区）。
      高度下限交给行来保证（.rows.big .row 的 min-height），键只负责填满行。 */
-  .rows.big .key { min-height: 0; height: 100%; font-size: 0.92rem; }
-  .rows.big .key.mod { font-size: 0.66rem; }
+  .rows.big .key { min-height: 0; height: 100%; font-size: var(--ui-text, 0.92rem); }
+  .rows.big .key.mod { font-size: var(--ui-small, 0.66rem); }
   /* 副字符一律绝对定位到右上角，不占垂直空间——两套大布局统一。
      上下叠放会让键内容需要 32px 高，而键盘区被分割条压缩时行只有 25px，
      .key 的 overflow:hidden 会把它切掉：flick 是看不见能滑出什么符号，
@@ -910,7 +910,7 @@
   .rows.big .key.has-up .up,
   .rows.big .key.has-down .down {
     position: absolute;
-    font-size: 0.5rem;
+    font-size: var(--ui-small, 0.5rem);
     line-height: 1;
     /* 角标宽度封顶到键宽的三分之一。键被分割条压到 25px 高时，上角标、主字符、
        下角标在**垂直方向本来就重叠**（实测 36×24.8 的键：角标占 3–11 与 13.8–21.8，
@@ -929,11 +929,11 @@
     padding: 0 calc((100% - 9 * var(--key-gap-x)) / 20 + var(--key-gap-x) / 2);
   }
   /* 方向键独立行：终端里 ↑ 翻历史、←→ 移光标比字母还高频，值得整整一行 */
-  .rows.big .row.arrows .key { font-size: 1.05rem; }
-  .rows.big .key.layerkey { background: var(--key-mod-bg); color: var(--dim); font-size: 0.7rem; }
+  .rows.big .row.arrows .key { font-size: var(--ui-text, 1.05rem); }
+  .rows.big .key.layerkey { background: var(--key-mod-bg); color: var(--dim); font-size: var(--ui-small, 0.7rem); }
   /* 功能行的 esc / tab：与 esc 并成左侧固定簇，定宽——
      让它跟联想条抢 flex 会被压到 14px，比字母键还难按。
-     尺寸写成 px 而不是 em：em 会跟着 font-size:0.62rem 缩水，算下来只有
+     尺寸写成 px 而不是 em：em 会跟着 font-size: var(--ui-small, 0.62rem) 缩水，算下来只有
      30×23，比字母键（36×31）还小，而这两个是终端里最常按的键之一。
      字号仍留 0.62rem——键帽是三个字母，太大反而挤。
      **不碰 .hint-chip**：它有自己的 font-size/min-height，联想条字号不受影响。 */
@@ -942,6 +942,6 @@
     flex: 0 0 auto;
     min-width: 46px;
     min-height: 34px;
-    font-size: 0.62rem;
+    font-size: var(--ui-small, 0.62rem);
   }
 </style>

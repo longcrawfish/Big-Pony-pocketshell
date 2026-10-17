@@ -116,3 +116,35 @@ button, input, select, textarea {
     animation: none !important;
   }
 }
+
+/* Interface typography is independent of xterm's cell metrics. Compact uses
+   component fallbacks to preserve the original desktop presentation. */
+:root[data-ui-size="comfortable"] {
+  --ui-text: 16px; --ui-small: 14px; --ui-title: 18px; --ui-touch: 44px;
+}
+:root[data-ui-size="large"] {
+  --ui-text: 18px; --ui-small: 16px; --ui-title: 20px; --ui-touch: 48px;
+}
+:root[data-eink="true"][data-scheme="light"] {
+  --text: #111; --dim: #333; --dimmer: #444; --line: #555;
+  --bb-line: #555; --bb-active: #000; --bb-indicator: #000;
+  --bar-text: #333; --bar-grip: #555; --line-soft: #777; --line-strong: #333;
+}
+:root[data-eink="true"] *,
+:root[data-eink="true"] *::before,
+:root[data-eink="true"] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  backdrop-filter: none !important;
+}
+:root[data-eink="true"] button:disabled { opacity: 1; border-style: dashed; }
+:root[data-eink="true"] button[aria-pressed="true"],
+:root[data-eink="true"] button[aria-checked="true"] { outline: 2px solid currentColor; outline-offset: -3px; }
+
+:root[data-eink="true"][data-scheme="dark"] {
+  --text: #fff; --dim: #eee; --dimmer: #ddd; --line: #aaa;
+  --bar-text: #eee; --bar-grip: #aaa; --line-soft: #888; --line-strong: #ccc;
+}

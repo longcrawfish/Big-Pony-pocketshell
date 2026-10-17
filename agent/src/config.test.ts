@@ -181,7 +181,7 @@ test("update.official tracks whether the repo is the built-in one", () => {
   const keyDir = tmpKeyDir();
   expect(loadConfig({ POCKETSHELL_KEY_DIR: keyDir }).update.official).toBe(true);
   expect(loadConfig({ POCKETSHELL_KEY_DIR: keyDir, POCKETSHELL_UPDATE_REPO: OFFICIAL_UPDATE_REPO }).update.official).toBe(true);
-  const forked = loadConfig({ POCKETSHELL_KEY_DIR: keyDir, POCKETSHELL_UPDATE_REPO: "evil/pocketshell" });
+  const forked = loadConfig({ POCKETSHELL_KEY_DIR: keyDir, POCKETSHELL_UPDATE: "1", POCKETSHELL_UPDATE_REPO: "evil/pocketshell" });
   expect(forked.update.official).toBe(false);
   // Still ENABLED — check keeps working against a fork, only apply is refused.
   expect(forked.update.enabled).toBe(true);
@@ -193,10 +193,10 @@ function envWith(over: Record<string, string | undefined>) {
   return { POCKETSHELL_KEY_DIR: mkdtempSync(join(tmpdir(), "ps-")), ...over };
 }
 
-test("update defaults: enabled + Big-Pony repo", () => {
+test("fork OTA is opt-in and defaults disabled", () => {
   const c = loadConfig(envWith({}));
-  expect(c.update.enabled).toBe(true);
-  expect(c.update.repo).toBe("Big-Pony/pocketshell");
+  expect(c.update.enabled).toBe(false);
+  expect(c.update.repo).toBeNull();
 });
 
 test("POCKETSHELL_UPDATE=0 disables OTA", () => {
@@ -211,7 +211,7 @@ test("POCKETSHELL_UPDATE_REPO=off disables OTA", () => {
 });
 
 test("custom repo honored", () => {
-  const c = loadConfig(envWith({ POCKETSHELL_UPDATE_REPO: "me/fork" }));
+  const c = loadConfig(envWith({ POCKETSHELL_UPDATE: "1", POCKETSHELL_UPDATE_REPO: "me/fork" }));
   expect(c.update.repo).toBe("me/fork");
 });
 
@@ -316,4 +316,11 @@ test("loadConfig never rewrites an existing agent.json", () => {
 
   expect(_rf(join(keyDir, "agent.json"), "utf8")).toBe(original);
   rmSync(keyDir, { recursive: true, force: true });
+});
+
+test("only explicit opt-in enables the built-in fork; arbitrary repo remains check-only", () => {
+  const c = loadConfig(envWith({ POCKETSHELL_UPDATE: "1" }));
+  expect(c.update).toEqual({ enabled: true, repo: OFFICIAL_UPDATE_REPO, official: true });
+  const changed = loadConfig(envWith({ POCKETSHELL_UPDATE: "1", POCKETSHELL_UPDATE_REPO: "Big-Pony/pocketshell" }));
+  expect(changed.update.official).toBe(false);
 });

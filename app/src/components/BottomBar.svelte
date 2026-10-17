@@ -45,20 +45,23 @@
     border-top: 1px solid var(--bb-line);
     flex: 0 0 auto;
     padding: 0 2px var(--safe-bottom);
-    height: calc(57px + var(--safe-bottom));
+    min-height: calc(57px + var(--safe-bottom));
   }
   .btab {
     flex: 1;
     background: transparent;
     border: 0;
     color: var(--dimmer);
-    padding: 0;
+    padding: 6px 2px;
+    min-width: 0;
+    min-height: var(--ui-touch, 44px);
+    overflow-wrap: anywhere;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 3px;
-    font-size: 0.6rem;
+    font-size: var(--ui-small, 0.6rem);
     user-select: none;
     position: relative;
     transition: background 0.15s, color 0.15s;
@@ -84,7 +87,7 @@
     background: var(--accent-soft);
   }
   .ic { width: 20px; height: 20px; display: block; }
-  .lb { font-size: 0.6rem; }
+  .lb { font-size: var(--ui-small, 0.6rem); }
   .dot {
     position: absolute;
     top: 9px;

@@ -320,11 +320,11 @@
   .rv { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; background: var(--bg); }
   .rv-top { flex: 0 0 auto; border-bottom: 1px solid var(--line); }
   .rv-title { display: flex; align-items: center; gap: 8px; padding: 9px 10px 7px; }
-  .rv-back { background: transparent; border: 0; color: var(--accent); font-size: 0.9rem; padding: 0 2px; }
+  .rv-back { background: transparent; border: 0; color: var(--accent); font-size: var(--ui-text, 0.9rem); padding: 0 2px; }
   .rv-scope { flex: 1; min-width: 0; }
-  .tt { font-size: 0.76rem; color: var(--text); }
-  .kind { color: var(--dim); font-size: 0.66rem; }
-  .rv-sum { display: flex; gap: 10px; padding: 0 10px 8px; font-size: 0.66rem; color: var(--dim); }
+  .tt { font-size: var(--ui-small, 0.76rem); color: var(--text); }
+  .kind { color: var(--dim); font-size: var(--ui-small, 0.66rem); }
+  .rv-sum { display: flex; gap: 10px; padding: 0 10px 8px; font-size: var(--ui-small, 0.66rem); color: var(--dim); }
   .plus { color: var(--ok); } .minus { color: var(--red); }
   .mono { font-family: var(--font-mono); }
 
@@ -334,11 +334,11 @@
   .fh {
     position: sticky; top: 0; z-index: 2;
     display: flex; align-items: center; gap: 7px; width: 100%; text-align: left;
-    padding: 7px 10px; font-size: 0.7rem; color: var(--text);
+    padding: 7px 10px; font-size: var(--ui-small, 0.7rem); color: var(--text);
     background: var(--panel); border: 0;
     border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
   }
-  .tw { color: var(--dimmer); width: 9px; flex: 0 0 auto; font-size: 0.6rem; }
+  .tw { color: var(--dimmer); width: 9px; flex: 0 0 auto; font-size: var(--ui-small, 0.6rem); }
   /* 长路径截左侧保右侧（文件名比目录更有辨识度）。
      `unicode-bidi: plaintext` 是必需的，不是装饰：光有 `direction: rtl` 时
      浏览器会把行尾的中性字符（路径分隔符 `/`）按 RTL 规则甩到视觉行首，
@@ -349,50 +349,50 @@
     flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     direction: rtl; unicode-bidi: plaintext; text-align: left;
   }
-  .fn { font-size: 0.62rem; color: var(--dim); flex: 0 0 auto; }
+  .fn { font-size: var(--ui-small, 0.62rem); color: var(--dim); flex: 0 0 auto; }
   .fn .p { color: var(--ok); } .fn .d { color: var(--red); }
-  .badge { font-size: 0.56rem; padding: 1px 5px; border-radius: 3px; flex: 0 0 auto; background: var(--ok-soft); color: var(--ok); }
+  .badge { font-size: var(--ui-small, 0.56rem); padding: 1px 5px; border-radius: 3px; flex: 0 0 auto; background: var(--ok-soft); color: var(--ok); }
   .badge.b-part { background: var(--amber-soft); color: var(--amber); }
 
-  .hh { font-size: 0.62rem; color: var(--dimmer); padding: 5px 10px 3px; background: var(--bg-deep); }
-  .ln { display: flex; font-size: 0.66rem; line-height: 1.55; }
+  .hh { font-size: var(--ui-small, 0.62rem); color: var(--dimmer); padding: 5px 10px 3px; background: var(--bg-deep); }
+  .ln { display: flex; font-size: var(--ui-small, 0.66rem); line-height: 1.55; }
   .tx { flex: 1; min-width: 0; white-space: pre; overflow-x: auto; padding: 0 8px; }
   .ln.add { background: var(--ok-soft); } .ln.add .tx { color: var(--ok); }
   .ln.del { background: var(--red-soft); } .ln.del .tx { color: var(--red); }
   .ln.ctx .tx { color: var(--dim); }
 
-  .note { padding: 9px 12px 11px; color: var(--dim); font-size: 0.68rem; }
+  .note { padding: 9px 12px 11px; color: var(--dim); font-size: var(--ui-small, 0.68rem); }
   .note.center { text-align: center; }
-  .note em { font-style: normal; color: var(--dimmer); font-size: 0.63rem; display: block; margin-top: 2px; }
+  .note em { font-style: normal; color: var(--dimmer); font-size: var(--ui-small, 0.63rem); display: block; margin-top: 2px; }
   .trunc { color: var(--amber); }
-  .err, .empty { padding: 16px 12px; color: var(--dim); font-size: 0.7rem; text-align: center; }
+  .err, .empty { padding: 16px 12px; color: var(--dim); font-size: var(--ui-small, 0.7rem); text-align: center; }
   .err { color: var(--amber); }
-  .end { padding: 16px 12px 8px; text-align: center; color: var(--dimmer); font-size: 0.64rem; }
+  .end { padding: 16px 12px 8px; text-align: center; color: var(--dimmer); font-size: var(--ui-small, 0.64rem); }
 
   .rv-rf {
     background: transparent; border: 1px solid var(--line); border-radius: var(--radius-md);
-    color: var(--text); min-width: 28px; height: 24px; font-size: 0.72rem; line-height: 1; flex: 0 0 auto;
+    color: var(--text); min-width: 28px; height: 24px; font-size: var(--ui-small, 0.72rem); line-height: 1; flex: 0 0 auto;
   }
   .rv-rf:disabled { opacity: 0.45; }
   .rv-rf.spin { animation: spin 0.9s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
   .segs { display: flex; margin: 0 10px 8px; border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; }
-  .seg { flex: 1; background: transparent; border: 0; border-right: 1px solid var(--line); color: var(--dim); padding: 6px 0; font-size: 0.68rem; }
+  .seg { flex: 1; background: transparent; border: 0; border-right: 1px solid var(--line); color: var(--dim); padding: 6px 0; font-size: var(--ui-small, 0.68rem); }
   .seg:last-child { border-right: 0; }
   .seg.on { background: var(--accent-soft); color: var(--accent); }
-  .seg .n { font-size: 0.6rem; opacity: 0.75; }
+  .seg .n { font-size: var(--ui-small, 0.6rem); opacity: 0.75; }
 
-  .baseline { display: flex; align-items: center; gap: 6px; margin: 0 10px 8px; font-size: 0.66rem; color: var(--dim); }
+  .baseline { display: flex; align-items: center; gap: 6px; margin: 0 10px 8px; font-size: var(--ui-small, 0.66rem); color: var(--dim); }
   /* 基线切换按钮。初版是「淡边框 + 10px 字 + 2px 内边距」，可点区域只有
      约 11px 高，且长得和旁边的静态文字一样——真机上找不到它。现在给足
      32px 高（拇指够得着）、主色描边、外加一个 ⇅ 图标明示可切换。 */
   .bl {
     display: inline-flex; align-items: center; gap: 5px;
     background: var(--accent-soft); border: 1px solid var(--accent); border-radius: var(--radius-md);
-    color: var(--accent); font-size: 0.68rem; padding: 0 9px; min-height: 32px;
+    color: var(--accent); font-size: var(--ui-small, 0.68rem); padding: 0 9px; min-height: 32px;
   }
-  .bl-ic { font-size: 0.72rem; line-height: 1; opacity: 0.85; }
+  .bl-ic { font-size: var(--ui-small, 0.72rem); line-height: 1; opacity: 0.85; }
   .bl:active { opacity: 0.75; }
   .bi { color: var(--dimmer); }
 
@@ -424,23 +424,23 @@
   @keyframes bp-up { from { transform: translateY(12px); opacity: 0.4; } to { transform: none; opacity: 1; } }
   .bp-title {
     font-family: var(--font-mono);
-    font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.06em;
+    font-size: var(--ui-small, 0.6rem); text-transform: uppercase; letter-spacing: 0.06em;
     color: var(--dimmer); font-weight: 600; padding: 4px 14px 8px;
   }
   .bp-list { overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .bp-item {
     display: block; width: 100%; text-align: left;
     background: transparent; border: 0; padding: 9px 14px;
-    font-size: 0.72rem; color: var(--text);
+    font-size: var(--ui-small, 0.72rem); color: var(--text);
   }
   .bp-item:active { background: var(--keyhi); }
   .bp-item.on { color: var(--accent); }
-  .bp-loading, .bp-err { padding: 12px 14px; font-size: 0.68rem; color: var(--dim); }
+  .bp-loading, .bp-err { padding: 12px 14px; font-size: var(--ui-small, 0.68rem); color: var(--dim); }
   .bp-err { color: var(--amber); }
   .bp-cancel {
     margin-top: 4px; border: 0; border-top: 1px solid var(--line);
-    background: transparent; color: var(--dim); font-size: 0.72rem; padding: 10px 14px;
+    background: transparent; color: var(--dim); font-size: var(--ui-small, 0.72rem); padding: 10px 14px;
   }
 
-  .retry { display: block; margin: 10px auto 0; background: transparent; border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--accent); font-size: 0.68rem; padding: 5px 14px; }
+  .retry { display: block; margin: 10px auto 0; background: transparent; border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--accent); font-size: var(--ui-small, 0.68rem); padding: 5px 14px; }
 </style>

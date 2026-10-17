@@ -32,3 +32,9 @@ skills-lock.json
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# Isolated development instances
+/.dev/
+
+# Python browser checks
+__pycache__/

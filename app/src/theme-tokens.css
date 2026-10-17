@@ -11,7 +11,7 @@
 /* 主题清单 + 各主题明暗标记 + 预览色。放在无属性 :root 里是有意的：
    设置面板要在 A 主题激活时展示 B 主题长什么样，所以这些值任何时候都可读。 */
 :root {
-  --ps-themes: "cream-dark,cream-light,gruvbox-dark,tokyonight,nord,mocha,blackout";
+  --ps-themes: "cream-dark,cream-light,gruvbox-dark,tokyonight,nord,mocha,blackout,eink";
 
   --ps-scheme-cream-dark: dark;
   --sw-cream-dark-bg: #2d2e2d;
@@ -61,6 +61,13 @@
   --sw-blackout-accent: #e9e9e6;
   --sw-blackout-ok: #35d158;
   --sw-blackout-text: #e9e9e6;
+
+  --ps-scheme-eink: light;
+  --sw-eink-bg: #ffffff;
+  --sw-eink-panel: #ededed;
+  --sw-eink-accent: #775500;
+  --sw-eink-ok: #006600;
+  --sw-eink-text: #111111;
 }
 
 /* theme: cream-dark (default) */
@@ -863,6 +870,121 @@
   --menu-bg: #161616;
   --pop-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   --toast-bg: #222222;
+  --toast-text: var(--text);
+  --banner-bg: var(--red-dark);
+  --banner-text: var(--amber);
+}
+
+/* theme: eink */
+:root[data-theme="eink"] {
+  --bg: #ffffff;
+  --bg-deep: #ffffff;
+  --panel: #ededed;
+  --panel2: #dbdbdb;
+  --elev: #c9c9c9;
+  --elev2: #c9c9c9;
+  --line: rgba(17, 17, 17, 0.14);
+  --line-soft: rgba(17, 17, 17, 0.09);
+  --line-strong: rgba(17, 17, 17, 0.24);
+  --text: #111111;
+  --dim: #606060;
+  --dimmer: #909090;
+  --shell-glow: transparent;
+  --accent: #775500;
+  --accent-soft: rgba(119, 85, 0, 0.09);
+  --accent-text: #775500;
+  --on-accent: #ffffff;
+  --primary-bg: var(--accent);
+  --primary-text: var(--on-accent);
+  --ok: #006600;
+  --amber: #785500;
+  --red: #aa0000;
+  --cyan: #006666;
+  --blue: #0000aa;
+  --ok-soft: rgba(0, 102, 0, 0.11);
+  --ok-line: rgba(0, 102, 0, 0.26);
+  --amber-soft: rgba(120, 85, 0, 0.12);
+  --red-soft: rgba(170, 0, 0, 0.12);
+  --on-danger: #ffffff;
+  --red-dark: #f7deda;
+  --banner-line: #edbdb5;
+  --teal: var(--ok);
+  --teal-dark: #dbe7da;
+  --term-bg: #ffffff;
+  --term-text: #111111;
+  --term-dim: #909090;
+  --term-accent: var(--accent);
+  --term-cursor-text: var(--on-accent);
+  --term-selection: #111111;
+  --term-sel-text: #ffffff;
+  --term-ansi-black: #111111;
+  --term-ansi-red: #9b0000;
+  --term-ansi-green: #005500;
+  --term-ansi-yellow: #664400;
+  --term-ansi-blue: #000099;
+  --term-ansi-magenta: #660066;
+  --term-ansi-cyan: #005555;
+  --term-ansi-white: #dddddd;
+  --term-ansi-bright-black: #444444;
+  --term-ansi-bright-red: #aa0000;
+  --term-ansi-bright-green: #006600;
+  --term-ansi-bright-yellow: #775500;
+  --term-ansi-bright-blue: #0000aa;
+  --term-ansi-bright-magenta: #770077;
+  --term-ansi-bright-cyan: #006666;
+  --term-ansi-bright-white: #ffffff;
+  --code-bg: #ededed;
+  --code-fg: #111111;
+  --code-gutter: #848484;
+  --code-active-line: rgba(17, 17, 17, 0.05);
+  --code-selection: rgba(17, 17, 17, 0.26);
+  --code-cursor: #775500;
+  --code-keyword: #660066;
+  --code-string: #005500;
+  --code-comment: #444444;
+  --code-number: #664400;
+  --code-func: #0000aa;
+  --code-type: #775500;
+  --code-attr: #005555;
+  --key: #dbdbdb;
+  --key-bg-image: none;
+  --keyhi: #c9c9c9;
+  --key-line: rgba(0, 0, 0, 0.12);
+  --key-text: var(--text);
+  --key-shadow: 0 1.5px 0 rgba(0, 0, 0, 0.08);
+  --key-inset: none;
+  --key-mod-bg: #f9f9f9;
+  --key-enter-bg: linear-gradient(180deg, #836015, #6b4a00);
+  --key-enter-text: #ffffff;
+  --key-enter-line: rgba(119, 85, 0, 0.5);
+  --key-enter-shadow: 0 2px 0 #391a00;
+  --seg-bg: var(--bg);
+  --seg-line: var(--line);
+  --seg-active-bg: var(--elev2);
+  --seg-active-text: var(--text);
+  --seg-active-ring: inset 0 0 0 1px var(--line-strong);
+  --seg-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --tab-bg: transparent;
+  --tab-line: var(--line-strong);
+  --tab-idx-bg: var(--panel);
+  --tab-idx-line: var(--line-strong);
+  --tab-idx-top: var(--accent);
+  --tab-active-bg: var(--tab-idx-bg);
+  --tab-active-text: var(--text);
+  --tab-active-line: var(--tab-idx-line);
+  --bar-bg: var(--bg);
+  --bar-text: var(--dimmer);
+  --bar-grip: var(--elev2);
+  --brand-sig: var(--accent);
+  --bb-bg: var(--bg);
+  --bb-line: var(--line);
+  --bb-active: var(--accent);
+  --bb-indicator: var(--accent);
+  --overlay-bg: rgba(2, 2, 2, 0.35);
+  --dlg-bg: #dbdbdb;
+  --menu-bg: #dbdbdb;
+  --pop-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  --toast-bg: #c9c9c9;
   --toast-text: var(--text);
   --banner-bg: var(--red-dark);
   --banner-text: var(--amber);

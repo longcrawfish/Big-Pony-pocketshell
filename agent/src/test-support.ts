@@ -1,3 +1,4 @@
+import { tmuxCommand } from "./tmux-command";
 // Test-only helpers. Nothing under src/ that ships imports this file — it exists
 // beside the tests so `.test.ts` files can share it without a second tsconfig root.
 //
@@ -5,7 +6,7 @@
 // (`ENOENT: Executable not found in $PATH`); it does not return a non-zero
 // `exitCode`. So the idiomatic-looking guard
 //
-//     const hasTmux = Bun.spawnSync(["tmux", "-V"]).exitCode === 0;   // WRONG
+//     const hasTmux = Bun.spawnSync(tmuxCommand(["-V"])).exitCode === 0;   // WRONG
 //
 // blows up during module collection on a machine without tmux, killing the whole
 // test file — including every test in it that has nothing to do with tmux. The
@@ -95,7 +96,7 @@ export function uniqueSessionName(tag = "s"): string {
  */
 export function killSession(name: string): void {
   try {
-    Bun.spawnSync(["tmux", "kill-session", "-t", name], { stdout: "ignore", stderr: "ignore" });
+    Bun.spawnSync(tmuxCommand(["kill-session", "-t", name]), { stdout: "ignore", stderr: "ignore" });
   } catch {
     // tmux missing or session already gone — nothing to clean up.
   }
@@ -148,7 +149,7 @@ export async function waitForPrompt(name: string, timeoutMs = 4000): Promise<boo
   return waitFor(
     () => {
       try {
-        const r = Bun.spawnSync(["tmux", "capture-pane", "-p", "-t", name]);
+        const r = Bun.spawnSync(tmuxCommand(["capture-pane", "-p", "-t", name]));
         return r.exitCode === 0 && new TextDecoder().decode(r.stdout).trim().length > 0;
       } catch {
         return false;

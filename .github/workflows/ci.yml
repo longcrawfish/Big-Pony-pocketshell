@@ -30,7 +30,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.14
 
       # Two system tools the agent suite needs, neither present on a stock
       # ubuntu-latest. Both are guarded by `test.skipIf` so a machine without
@@ -95,7 +95,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.14
 
       # fonts.test.ts 用 fontTools 校验字体产物的字形覆盖与等宽一致性。
       # 这是子集化的核心保障：缺一个制表符字形，终端画框就会静默回落系统字体、

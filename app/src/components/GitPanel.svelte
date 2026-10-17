@@ -181,7 +181,7 @@
 {/if}
 
 <style>
-  .git { height: 100%; overflow-y: auto; padding: 8px 10px; font-size: 0.72rem; }
+  .git { height: 100%; overflow-y: auto; padding: 8px 10px; font-size: var(--ui-small, 0.72rem); }
   .hint, .empty, .gn { color: var(--dim); padding: 10px; }
   .gn { color: var(--amber); }
   .sec { margin-bottom: 12px; }
@@ -193,21 +193,21 @@
     color: var(--text);
     min-width: 28px;
     height: 24px;
-    font-size: 0.72rem;
+    font-size: var(--ui-small, 0.72rem);
     line-height: 1;
   }
   .rf:disabled { opacity: 0.45; }
   /* 分区标题走共同设计语言：mono 大写小标题 */
   .st {
     font-family: var(--font-mono);
-    font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.06em;
+    font-size: var(--ui-small, 0.6rem); text-transform: uppercase; letter-spacing: 0.06em;
     color: var(--dimmer); font-weight: 600; margin: 12px 0 6px;
   }
   .cur { color: var(--text); }
   .brs { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 5px; }
   .br { border: 1px solid var(--line); border-radius: 4px; padding: 2px 7px; color: var(--dim); }
   .br.on { color: var(--accent); border-color: var(--accent); }
-  .tip { color: var(--dimmer); font-size: 0.62rem; }
+  .tip { color: var(--dimmer); font-size: var(--ui-small, 0.62rem); }
   .chg, .cm, .more { display: flex; gap: 8px; width: 100%; text-align: left; border: 0; background: transparent; color: var(--text); padding: 6px 2px; align-items: center; }
   .chg:active, .cm:active { background: var(--panel); }
   /* 与目录树同一套语言：3px 竖色条，状态字母进 aria-label */
@@ -215,7 +215,7 @@
   .g-M { background: var(--amber); } .g-A { background: var(--ok); } .g-D { background: var(--red); } .g-\? { background: var(--dimmer); }
   .cm { flex-wrap: wrap; border-bottom: 1px solid var(--line); }
   .h { color: var(--accent); } .m { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .meta { color: var(--dimmer); font-size: 0.62rem; width: 100%; }
+  .meta { color: var(--dimmer); font-size: var(--ui-small, 0.62rem); width: 100%; }
   .more { color: var(--accent); justify-content: center; }
 
   /* 审查入口条：worktree 那条用主色底强调（这是最常用的入口），
@@ -223,11 +223,11 @@
   .rv-entry {
     display: flex; width: 100%; align-items: center; gap: 8px; padding: 9px 10px;
     background: var(--accent-soft); border: 1px solid var(--accent);
-    border-radius: var(--radius-md); color: var(--text); font-size: 0.74rem; margin: 8px 0 4px;
+    border-radius: var(--radius-md); color: var(--text); font-size: var(--ui-small, 0.74rem); margin: 8px 0 4px;
   }
   .rv-entry2 { background: transparent; border-color: var(--line); }
   .rv-entry .ic { color: var(--accent); }
-  .rv-entry .sub { margin-left: auto; color: var(--dim); font-size: 0.66rem; }
+  .rv-entry .sub { margin-left: auto; color: var(--dim); font-size: var(--ui-small, 0.66rem); }
   .rv-entry .sub .p { color: var(--ok); }
   .rv-entry .sub .d { color: var(--red); }
   .mono { font-family: var(--font-mono); }

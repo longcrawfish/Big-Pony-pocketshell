@@ -106,7 +106,7 @@ test("listSessions reply carries features:['bin'] so a fresh client knows upload
   while (ws.sent.length === 0 && Date.now() - start < 2000) await Bun.sleep(10);
   const reply = decodeServer(Buffer.from(ws.sent[0]).toString("utf8")) as any;
   expect(reply.type).toBe("sessions");
-  expect(reply.features).toEqual(["bin"]);
+  expect(reply.features).toEqual(["bin", "size-control-v1"]);
   srv.stop();
 });
 
@@ -479,7 +479,7 @@ test("periodicPush broadcasts the merged roster (incl. foreign idle sessions)", 
   expect(s.lastLine).toBe("$ vim");
   // Same regression as the listSessions test above, for the OTHER sessions
   // send site (the periodic broadcast) — the two must not drift apart.
-  expect(reply.features).toEqual(["bin"]);
+  expect(reply.features).toEqual(["bin", "size-control-v1"]);
   srv.stop();
 });
 
@@ -621,22 +621,22 @@ test("applyGate: refuses when OTA is disabled (no repo)", () => {
 });
 
 test("applyGate: refuses when a run is already in progress", () => {
-  const out = applyGate("org/repo", { current: "1.0.0", latest: "1.1.0", hasUpdate: true, notes: "", publishedAt: null, canApply: true, checkedAt: Date.now() }, true);
+  const out = applyGate("longcrawfish/Big-Pony-pocketshell", { current: "1.0.0", latest: "1.1.0", hasUpdate: true, notes: "", publishedAt: null, canApply: true, checkedAt: Date.now() }, true);
   expect(out).toEqual({ started: false, reason: "in_progress" });
 });
 
 test("applyGate: refuses when there is no cached check yet", () => {
-  const out = applyGate("org/repo", null, false);
+  const out = applyGate("longcrawfish/Big-Pony-pocketshell", null, false);
   expect(out).toEqual({ started: false, reason: "no_release_info" });
 });
 
 test("applyGate: refuses when the cached check says canApply is false, surfacing its reason", () => {
-  const out = applyGate("org/repo", { current: "1.0.0", latest: "1.1.0", hasUpdate: true, notes: "", publishedAt: null, canApply: false, reason: "unsupported_platform", checkedAt: Date.now() }, false);
+  const out = applyGate("longcrawfish/Big-Pony-pocketshell", { current: "1.0.0", latest: "1.1.0", hasUpdate: true, notes: "", publishedAt: null, canApply: false, reason: "unsupported_platform", checkedAt: Date.now() }, false);
   expect(out).toEqual({ started: false, reason: "unsupported_platform" });
 });
 
 test("applyGate: starts when repo is set, cache is applicable, and nothing is in flight", () => {
-  const out = applyGate("org/repo", { current: "1.0.0", latest: "1.1.0", hasUpdate: true, notes: "", publishedAt: null, canApply: true, checkedAt: Date.now() }, false);
+  const out = applyGate("longcrawfish/Big-Pony-pocketshell", { current: "1.0.0", latest: "1.1.0", hasUpdate: true, notes: "", publishedAt: null, canApply: true, checkedAt: Date.now() }, false);
   expect(out).toEqual({ started: true, latest: "1.1.0" });
 });
 
@@ -649,7 +649,7 @@ test("applyGate: refuses to auto-apply from a non-official repo", () => {
   const cache = { current: "1.0.0", latest: "1.1.0", hasUpdate: true, notes: "", publishedAt: null, canApply: true, checkedAt: Date.now() };
   expect(applyGate("evil/pocketshell", cache, false, false)).toEqual({ started: false, reason: "unofficial_repo" });
   // Refused even when everything else is perfect — the repo alone decides.
-  expect(applyGate("evil/pocketshell", cache, false, true)).toEqual({ started: true, latest: "1.1.0" });
+  expect(applyGate("evil/pocketshell", cache, false, true)).toEqual({ started: false, reason: "unofficial_repo" });
 });
 
 test("applyGate: unofficial repo outranks the in-progress and cache reasons", () => {
@@ -1064,3 +1064,68 @@ test("ping is answered with pong", async () => {
   ws.close();
   srv.stop();
 });
+
+test("foreground tab switch and background presence enter size grace on the authenticated connection", async () => {
+  const terminal = new TerminalService();
+  const calls: { actor: { device: string; connection: string }; session?: string }[] = [];
+  terminal.sizeControl = { grace(actor: { device: string; connection: string }, session?: string) {
+    calls.push({ actor, session });
+  }, dispose() {}, tick() {} } as any;
+  const srv = startServer({ port: 0, terminal, channelFactory: passthroughResponder });
+  const ws = await openHandshakedWs(srv.port);
+  ws.binaryType = "arraybuffer";
+  try {
+    sendBinary(ws, encode({ type: "presence", foreground: true, activeSessionId: "one" }));
+    sendBinary(ws, encode({ type: "presence", foreground: true, activeSessionId: "two" }));
+    sendBinary(ws, encode({ type: "presence", foreground: false, activeSessionId: "two" }));
+    expect(await waitFor(() => calls.length === 2)).toBe(true);
+    expect(calls[0].session).toBe("one");
+    expect(calls[1].session).toBeUndefined();
+    expect(calls[0].actor.connection).toBeTruthy();
+    expect(calls[0].actor).toEqual(calls[1].actor);
+  } finally { ws.close(); srv.stop(); }
+});
+
+test("two authenticated sockets: legacy resize and stolen capability cannot bypass ownership", async () => {
+  const srv = startServer({ port: 0, channelFactory: passthroughResponder });
+  const one = await openHandshakedWs(srv.port), two = await openHandshakedWs(srv.port);
+  one.binaryType = two.binaryType = "arraybuffer";
+  const name = uniqueSessionName("size-ws");
+  let seq = 0;
+  const rpc = (ws: WebSocket, method: string, params: object): Promise<any> => new Promise((resolve, reject) => {
+    const id = `size-${++seq}`;
+    const timer = setTimeout(() => { ws.removeEventListener("message", listener); reject(new Error("RPC timeout")); }, 3000);
+    function listener(ev: MessageEvent) {
+      const msg = parseFrame(ev);
+      if (msg.type !== "response" || msg.id !== id) return;
+      clearTimeout(timer); ws.removeEventListener("message", listener);
+      if (msg.ok) resolve(msg.result); else reject(new Error(msg.error.message));
+    }
+    ws.addEventListener("message", listener);
+    sendBinary(ws, encode({ type: "rpc", id, method, params }));
+  });
+  try {
+    sendBinary(one, encode({ type: "newSession", name }));
+    await Bun.sleep(100);
+    const status = await rpc(one, "term.size.status", { session: name });
+    const first = await rpc(one, "term.size.acquire", { session: name, revision: status.revision, cols: 40, rows: 12 });
+    expect(first.controller).toBe("self");
+    sendBinary(two, encode({ type: "resize", sessionId: name, cols: 70, rows: 20, sizeToken: first.token }));
+    sendBinary(two, encode({ type: "resize", sessionId: name, cols: 65, rows: 20 }));
+    const other = await rpc(two, "term.size.status", { session: name });
+    expect(other.cols).toBe(40); expect(other.token).toBeUndefined();
+    const second = await rpc(two, "term.size.acquire", { session: name, revision: other.revision, force: true, cols: 60, rows: 20 });
+    expect(second.controller).toBe("self");
+    sendBinary(one, encode({ type: "resize", sessionId: name, cols: 30, rows: 10, sizeToken: first.token }));
+    expect((await rpc(two, "term.size.status", { session: name })).cols).toBe(60);
+    await rpc(two, "term.size.release", { session: name, token: second.token });
+    expect((await rpc(one, "term.redraw", { session: name, sizeToken: first.token })).ok).toBe(false);
+    expect((await rpc(two, "term.size.status", { session: name })).policy).toBe("inherit");
+    // Input is still permitted on the observing connection.
+    sendBinary(one, encode({ type: "input", sessionId: name, data: btoa("echo SIZE_INPUT_OK\n") }));
+    expect(await waitFor(async () => {
+      const result = await rpc(two, "term.capture", { session: name });
+      return Buffer.from(result.data, "base64").toString().includes("SIZE_INPUT_OK");
+    })).toBe(true);
+  } finally { one.close(); two.close(); srv.stop(); killSession(name); }
+}, 10000);

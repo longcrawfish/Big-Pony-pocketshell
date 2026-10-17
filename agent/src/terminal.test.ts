@@ -1,3 +1,4 @@
+import { tmuxCommand } from "./tmux-command";
 import { describe, it, test, expect, afterEach } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -472,22 +473,13 @@ test("paneInfo() returns a complete shape (incl. isShell) when tmux fails", () =
   term.dispose();
 });
 
-test("redraw() 抖动窗口尺寸让程序自己重绘（不再依赖 attach 客户端）", () => {
-  // 【2026-08-25 契约变更】原来是给每个 attach 客户端发 refresh-client。换掉
-  // attach 之后我们不再是 tmux 的客户端，list-clients 恒为空，那条路只会返回
-  // false。新契约：cols-1 再 cols，让 tmux 给窗格发 SIGWINCH，程序自己重绘 ——
-  // 那才是真正的窗格输出，才会经 pipe-pane 回到我们手里。
+test("redraw without a size capability never modifies a window", () => {
   const calls: string[][] = [];
   const term = new TerminalService({ tmux: (args) => { calls.push(args); return ok(); } });
   term.ensure("work", { cols: 80, rows: 24 });
   calls.length = 0;
-  expect(term.redraw("work")).toEqual({ ok: true });
-  const resizes = calls.filter((a) => a[0] === "resize-window");
-  expect(resizes.length).toBe(2);
-  expect(resizes[0]).toEqual(["resize-window", "-t", "work", "-x", "79", "-y", "24"]);
-  expect(resizes[1]).toEqual(["resize-window", "-t", "work", "-x", "80", "-y", "24"]);
-  // 防回潮：不得再去碰 attach 客户端
-  expect(calls.some((a) => a.includes("refresh-client"))).toBe(false);
+  expect(term.redraw("work")).toEqual({ ok: false });
+  expect(calls.some(a => a[0] === "resize-window")).toBe(false);
   term.dispose();
 });
 
@@ -849,7 +841,7 @@ test.skipIf(!hasTmux)("external detach does not end the session (auto re-attach)
     // 对本会话是**彻底的空操作** —— 旧实现会因为 attach PTY 退出而重连并重绘，
     // 新实现连感知都不该有。断言反过来：不许冒出任何字节（冒出来就说明还有
     // attach 客户端残留在链路上），会话照常存活、照常能收发。
-    Bun.spawnSync(["tmux", "detach-client", "-s", NAME]);
+    Bun.spawnSync(tmuxCommand(["detach-client", "-s", NAME]));
     chunks.length = 0;
     await Bun.sleep(300);
     // 判据是**内容**不是字节数：pipe-pane 是异步的，早先的提示符字节完全可能这时

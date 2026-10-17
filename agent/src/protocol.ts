@@ -39,13 +39,19 @@ export interface Snippet {
 // 写操作走下面的专用消息，变更后广播无载荷的 `hintsChanged` 让各端重拉。
 export interface Hint { id: string; text: string }
 
+export interface SizeState {
+  sessionId: string; window: string; revision: string; cols: number; rows: number;
+  policy: string; effective: string; controller: "self" | "other" | "none";
+  token?: string; blocked: boolean;
+}
+
 export type ClientMsg =
   | { type: "attach"; sessionId: string; lastSeq?: number }
   // detach: unsubscribe from a session's output (fire-and-forget, no response).
   // Purely additive — old clients never send it and degrade to subscribe-only.
   | { type: "detach"; sessionId: string }
   | { type: "input"; sessionId: string; data: string }
-  | { type: "resize"; sessionId: string; cols: number; rows: number }
+  | { type: "resize"; sessionId: string; cols: number; rows: number; sizeToken?: string }
   // cols/rows 可选：客户端带上本机上次的可信尺寸，让会话一开始就按该宽度排版
   // （不带则退回 80x24）。取值仍要过 sane-size 校验——协议是外部输入。
   | { type: "newSession"; name: string; cmd?: string; cwd?: string; kind?: "tmux" | "shell"; cols?: number; rows?: number }
@@ -75,6 +81,7 @@ export type ClientMsg =
   | { type: "rpc"; id: string; method: string; params?: unknown; acceptEnc?: string[] };
 
 export type ServerMsg =
+  | { type: "sizeState"; state: SizeState }
   | { type: "output"; sessionId: string; seq: number; data: string }
   // features: agent 支持的可选能力。客户端见到 "bin" 才开启二进制**上行**。
   //

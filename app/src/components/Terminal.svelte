@@ -97,6 +97,7 @@
   import type { TermHistoryResult } from "../lib/net/protocol";
   import { familyOf, termFontFamily, type FontId } from "../lib/font";
   import { t } from "svelte-i18n";
+  import { tr } from "../lib/i18n";
   import ProgressLine from "./ui/ProgressLine.svelte";
 
   let {
@@ -105,6 +106,7 @@
     active,
     streaming,
     closed = false,
+    eink = false,
     fontSize = 14,
     fontFamily = "maple-mono",
     historyLines = DEFAULT_SETTINGS.historyLines,
@@ -116,6 +118,7 @@
     active: boolean;
     streaming: boolean;
     closed?: boolean;
+    eink?: boolean;
     fontSize?: number;
     fontFamily?: FontId;
     /** 重灌历史拉多少行。全量 2000 行在真机上要七秒，见 lib/term/history-decode.ts。 */
@@ -124,6 +127,26 @@
     onReseedReady?: (sessionId: string, reseed: (t: ReseedTrigger) => void) => void;
   } = $props();
 
+  let sizeState = $state<import("../lib/net/protocol").SizeState | undefined>();
+  let sizeError = $state(false);
+  let sizeBusy = $state(false);
+  async function sizeAction(action: "acquire" | "release" | "migrate") {
+    sizeBusy = true; sizeError = false;
+    try { await conn.sizeControl[action](sessionId); } catch { sizeError = true; }
+    finally { sizeBusy = false; }
+  }
+  $effect(() => {
+    if (!conn.sizeControl) return;
+    sizeState = conn.sizeControl.states.get(sessionId);
+    return conn.sizeControl.on(s => {
+      if (s.sessionId !== sessionId) return;
+      const previous = sizeState;
+      sizeState = s;
+      if (term && active && (previous?.controller !== s.controller || previous?.cols !== s.cols || previous?.rows !== s.rows)) {
+        queueMicrotask(() => refit());
+      }
+    });
+  });
   let host: HTMLDivElement;
   // 首屏 seed（term.history）。历史行数越多越慢——设置项说明原文就是
   // "越少越快"，说明这条早被识别为慢路径。此前纯黑等待、零反馈（14 期需求 5）。
@@ -232,7 +255,7 @@
       scrollback: 2000,
       unicodeVersion: "11",
       convertEol: false,
-      cursorBlink: true,
+      cursorBlink: !eink,
       disableStdin: true,
       // 手机上「看不见输入光标」的修复。这个面板永远拿不到焦点：它是只读的
       // （disableStdin），且为了压掉手机 IME，xterm 那个隐藏 helper textarea 被设成
@@ -729,8 +752,17 @@
       // 「元素被显示」——下面的 ResizeObserver 正是在等这个事件。
       if (!isMeasurable(host)) return;
       const d = dims();
+      if (sizeState && sizeState.controller !== "self") {
+        if (isPlausible(d)) conn.sizeControl?.measured(sessionId, d.cols, d.rows);
+        const { cols, rows } = sizeState;
+        if (Number.isInteger(cols) && Number.isInteger(rows) && cols > 0 && rows > 0 &&
+            (term.cols !== cols || term.rows !== rows)) term.resize(cols, rows);
+        viewportTooSmall = false;
+        return;
+      }
       // 可测量了也仍要验一次：字体未就绪等边缘情况同样可能算出离谱的格子数。
-      if (!isPlausible(d)) return;
+      viewportTooSmall = !isPlausible(d);
+      if (viewportTooSmall) return;
       // 只记可信值：兜底一旦被塌陷值污染，一次性故障就变成永久故障。
       rememberDims(d);
       // 变高立刻应用，变矮先压住 —— 只有变矮会把行推进 scrollback 并永久定格。
@@ -1700,6 +1732,9 @@
     else webglHandle.suspend();
   });
 
+  let viewportTooSmall = $state(false);
+  $effect(() => { const enabled = eink; if (mounted && term) term.options.cursorBlink = !enabled; });
+
   // Live-apply font-size changes from settings: update xterm then re-fit + resize PTY.
   $effect(() => {
     const fs = fontSize;
@@ -1723,7 +1758,22 @@
   });
 </script>
 
-<div class="term-wrap" class:hidden={!active}>
+<div class="term-wrap" class:hidden={!active} class:observing={sizeState && sizeState.controller !== "self"}>
+  {#if sizeState}
+    <div class="size-controls">
+      <span>{$t(`terminal.size.${sizeState.controller}`)} · {sizeState.cols}×{sizeState.rows}</span>
+      <button disabled={sizeBusy || sizeState.blocked} onclick={() => sizeAction(sizeState?.controller === "self" ? "release" : "acquire")}>
+        {$t(sizeState.controller === "self" ? 'terminal.size.release' : 'terminal.size.acquire')}
+      </button>
+      {#if sizeState.controller === "none" && sizeState.policy === "manual"}
+        <button disabled={sizeBusy || sizeState.blocked} onclick={() => {
+          if (confirm(tr('terminal.size.migrateConfirm'))) void sizeAction("migrate");
+        }}>{$t('terminal.size.migrate')}</button>
+      {/if}
+      {#if sizeState.blocked || sizeError}<span role="status">{$t('terminal.size.failed')}</span>{/if}
+    </div>
+  {/if}
+  {#if viewportTooSmall}<div class="size-warning" role="status">{$t('terminal.size.tooSmall')}</div>{/if}
   <div class="term" class:closed bind:this={host}></div>
   {#if seeding || seedRetrying}
     <div class="term-seed">
@@ -1744,7 +1794,11 @@
 </div>
 
 <style>
-  .term-wrap { position: relative; width: 100%; height: 100%; }
+  .term-wrap { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; min-height: 0; }
+  .size-controls, .size-warning { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 8px; font-size: var(--ui-small, 12px); background: var(--panel); border-bottom: 1px solid var(--line); }
+  .size-controls button { min-height: 44px; padding: 4px 8px; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); }
+  .observing .term { overflow: auto; }
+  .observing .term :global(.xterm) { min-width: max-content; }
   /* 首屏读取历史时的极淡提示。居中偏上，不遮挡将要出现的第一行输出。 */
   .term-seed {
     position: absolute; left: 0; right: 0; top: 38%;
@@ -1768,6 +1822,8 @@
   .term {
     width: 100%;
     height: 100%;
+    min-height: 0;
+    flex: 1 1 0;
     padding: 6px 8px;
   }
   .term :global(.xterm-viewport) {

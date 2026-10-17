@@ -43,7 +43,7 @@ const MAX_NAME_LEN = 64;
  * guard is a test that reads the directory (`theme-store.test.ts`).
  */
 export const BUILTIN_THEME_IDS: readonly string[] = Object.freeze([
-  "blackout", "cream-dark", "cream-light", "gruvbox-dark", "mocha", "nord", "tokyonight",
+  "eink", "blackout", "cream-dark", "cream-light", "gruvbox-dark", "mocha", "nord", "tokyonight",
 ]);
 const BUILTIN = new Set(BUILTIN_THEME_IDS);
 

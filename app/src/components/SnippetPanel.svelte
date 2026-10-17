@@ -131,14 +131,14 @@
     margin-bottom: 10px;
     flex: 0 0 auto;
   }
-  .title { font-size: 0.82rem; font-weight: 700; }
+  .title { font-size: var(--ui-text, 0.82rem); font-weight: 700; }
   .add-btn {
     background: var(--primary-bg);
     color: var(--primary-text);
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
     padding: 6px 12px;
-    font-size: 0.72rem;
+    font-size: var(--ui-small, 0.72rem);
     font-weight: 600;
   }
   .head-btns { display: flex; gap: 6px; align-items: center; }
@@ -148,16 +148,16 @@
     border: 1px solid var(--key-line);
     border-radius: var(--radius-sm);
     padding: 6px 12px;
-    font-size: 0.72rem;
+    font-size: var(--ui-small, 0.72rem);
   }
   .manage-btn:active { background: var(--keyhi); }
   .manage-hint {
-    font-size: 0.68rem;
+    font-size: var(--ui-small, 0.68rem);
     color: var(--dim);
     padding: 6px 2px 2px;
   }
   .check {
-    font-size: 0.72rem;
+    font-size: var(--ui-small, 0.72rem);
     color: var(--dim);
     display: flex;
     align-items: center;
@@ -169,7 +169,7 @@
   .groups { flex: 1; overflow-y: auto; }
   .sp-empty {
     color: var(--dim);
-    font-size: 0.72rem;
+    font-size: var(--ui-small, 0.72rem);
     text-align: center;
     padding: 20px 8px;
   }
@@ -177,7 +177,7 @@
   .sp-group {
     color: var(--dimmer);
     font-family: var(--font-mono);
-    font-size: 0.6rem;
+    font-size: var(--ui-small, 0.6rem);
     font-weight: 600;
     margin: 12px 2px 6px;
     letter-spacing: 0.06em;
@@ -202,23 +202,23 @@
     color: var(--text);
     border: 0;
     padding: 6px 10px;
-    font-size: 0.72rem;
+    font-size: var(--ui-small, 0.72rem);
     font-family: var(--font-mono);
   }
   .ins:active { background: var(--keyhi); }
-  .cr { color: var(--accent); margin-left: 5px; font-size: 0.6rem; }
+  .cr { color: var(--accent); margin-left: 5px; font-size: var(--ui-small, 0.6rem); }
   .del {
     background: transparent;
     color: var(--red);
     border: 0;
     border-left: 1px solid var(--line);
     padding: 6px 8px;
-    font-size: 0.85rem;
+    font-size: var(--ui-text, 0.85rem);
   }
   .del:active { background: var(--red-soft); }
 
   .hint {
-    font-size: 0.68rem;
+    font-size: var(--ui-small, 0.68rem);
     color: var(--dim);
     line-height: 1.6;
     margin-top: 16px;
@@ -228,10 +228,10 @@
   .overlay { position: fixed; inset: 0; z-index: 40; background: var(--overlay-bg); display: flex; justify-content: center; align-items: flex-start; }
   .overlay .dlg { margin-top: 14vh; }
   .dlg { background: var(--dlg-bg); border: 1px solid var(--line); border-radius: var(--radius-xl); padding: 20px; width: min(300px, 84vw); box-shadow: var(--pop-shadow); }
-  .dlg-title { font-size: 0.85rem; font-weight: 700; margin-bottom: 12px; text-align: center; }
-  .dlg-input { width: 100%; box-sizing: border-box; background: var(--panel2); border: 1px solid var(--line-strong); border-radius: var(--radius-md); color: var(--text); padding: 8px 10px; font-size: 0.8rem; margin-bottom: 10px; outline: none; }
+  .dlg-title { font-size: var(--ui-text, 0.85rem); font-weight: 700; margin-bottom: 12px; text-align: center; }
+  .dlg-input { width: 100%; box-sizing: border-box; background: var(--panel2); border: 1px solid var(--line-strong); border-radius: var(--radius-md); color: var(--text); padding: 8px 10px; font-size: var(--ui-small, 0.8rem); margin-bottom: 10px; outline: none; }
   .dlg-input:focus { border-color: var(--accent); }
   .dlg-btns { display: flex; gap: 8px; margin-top: 6px; }
-  .dlg-btns button { flex: 1; padding: 9px 0; border-radius: var(--radius-md); border: 1px solid var(--line); font-size: 0.75rem; background: var(--key); color: var(--text); }
+  .dlg-btns button { flex: 1; padding: 9px 0; border-radius: var(--radius-md); border: 1px solid var(--line); font-size: var(--ui-small, 0.75rem); background: var(--key); color: var(--text); }
   .dlg-btns button.primary { background: var(--primary-bg); color: var(--primary-text); border-color: transparent; font-weight: 600; }
 </style>

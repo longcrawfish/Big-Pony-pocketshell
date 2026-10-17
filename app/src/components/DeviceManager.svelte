@@ -79,7 +79,7 @@
 </div>
 
 <style>
-  .dm-hint { color: var(--ok); font-size: 0.68rem; margin: 2px 0 4px; }
+  .dm-hint { color: var(--ok); font-size: var(--ui-small, 0.68rem); margin: 2px 0 4px; }
   .dm-overlay {
     position: fixed;
     inset: 0;
@@ -106,18 +106,18 @@
     align-items: center;
     margin-bottom: 14px;
   }
-  h2 { font-size: 0.95rem; font-weight: 700; }
+  h2 { font-size: var(--ui-text, 0.95rem); font-weight: 700; }
   .close {
     background: transparent;
     border: 0;
     color: var(--dim);
-    font-size: 1.3rem;
+    font-size: var(--ui-title, 1.3rem);
     line-height: 1;
     padding: 4px 8px;
   }
 
   section h3 {
-    font-size: 0.72rem;
+    font-size: var(--ui-small, 0.72rem);
     color: var(--dim);
     margin-bottom: 8px;
     text-transform: uppercase;
@@ -139,7 +139,7 @@
     border-radius: var(--radius-md);
     padding: 8px;
     font-family: inherit;
-    font-size: 0.78rem;
+    font-size: var(--ui-small, 0.78rem);
     outline: none;
   }
   .dm-pair textarea { resize: none; }
@@ -155,7 +155,7 @@
     font-weight: 600;
     margin-top: 4px;
   }
-  .dm-error { color: var(--red); font-size: 0.72rem; margin-top: 6px; }
+  .dm-error { color: var(--red); font-size: var(--ui-small, 0.72rem); margin-top: 6px; }
 
   .dm-row {
     display: grid;
@@ -164,10 +164,10 @@
     align-items: center;
     padding: 8px 0;
     border-top: 1px solid var(--line);
-    font-size: 13px;
+    font-size: var(--ui-text, 13px);
   }
   .dm-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dm-src, .dm-seen { color: var(--dim); font-size: 0.68rem; }
+  .dm-src, .dm-seen { color: var(--dim); font-size: var(--ui-small, 0.68rem); }
   .dm-seen { font-variant-numeric: tabular-nums; }
   .dm-row button {
     background: var(--key);
@@ -175,9 +175,9 @@
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
     padding: 3px 8px;
-    font-size: 0.68rem;
+    font-size: var(--ui-small, 0.68rem);
   }
   .dm-row button:not(:disabled):active { background: var(--red); color: var(--on-danger); border-color: var(--red); }
   .dm-row button:disabled { opacity: 0.4; }
-  .dm-empty { color: var(--dim); font-size: 0.72rem; padding: 10px 0; text-align: center; }
+  .dm-empty { color: var(--dim); font-size: var(--ui-small, 0.72rem); padding: 10px 0; text-align: center; }
 </style>

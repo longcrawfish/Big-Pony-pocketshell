@@ -4,6 +4,8 @@
 // cert exists on this machine) -> restore the committed stub.
 import { $ } from "bun";
 import { join } from "node:path";
+import { readFileSync, writeFileSync } from "node:fs";
+import { buildId } from "../../scripts/build-id";
 
 const AGENT = join(import.meta.dir, "..");
 const APP = join(AGENT, "../app");
@@ -12,7 +14,11 @@ const OUT = join(AGENT, "dist");
 // Git short SHA baked into AGENT_VERSION (version.ts) — see that file for why
 // every build must carry one. Empty (plain semver) when git is unavailable
 // (e.g. building from a tarball); the vite build in app/ falls back the same way.
-const SHA = (await $`git rev-parse --short HEAD`.nothrow().text()).trim();
+const SHA = buildId(join(AGENT, ".."));
+if ((!SHA || SHA.includes("-dirty-")) && process.env.POCKETSHELL_ALLOW_DIRTY !== "1") {
+  throw new Error("Build requires committed, clean source. For a development artifact set POCKETSHELL_ALLOW_DIRTY=1.");
+}
+process.env.PS_BUILD_SHA = SHA;
 if (!SHA) console.log("[build:bin] WARNING: git short SHA unavailable — version stays plain semver (SW bucket will not rotate)");
 
 // Required targets; darwin-x64 optional — drop it if you don't ship Intel macs.
@@ -28,7 +34,10 @@ if (!SHA) console.log("[build:bin] WARNING: git short SHA unavailable — versio
 // separate `-baseline` asset would make old-CPU machines re-download the
 // crashing AVX2 build on every auto-update. One asset that runs everywhere is
 // worth more than the SIMD headroom — this process mostly shuttles PTY bytes.
-const TARGETS = ["bun-linux-x64-baseline", "bun-linux-arm64", "bun-darwin-arm64", "bun-darwin-x64"];
+const ALL_TARGETS = ["bun-linux-x64-baseline", "bun-linux-arm64", "bun-darwin-arm64", "bun-darwin-x64"];
+
+const TARGETS = process.env.POCKETSHELL_BUILD_TARGETS?.split(",") ?? ALL_TARGETS;
+if (TARGETS.some(t => !ALL_TARGETS.includes(t))) throw new Error("Unknown build target");
 
 /** Release asset name for a build target. Baseline ships under the plain x64 name (see above). */
 function outNameFor(target: string): string {
@@ -49,6 +58,9 @@ async function findSigningIdentity(): Promise<boolean> {
   return out.includes(SIGN_IDENTITY);
 }
 
+const manifest = join(AGENT, "src/embedded-manifest.ts");
+const originalManifest = readFileSync(manifest);
+try {
 await $`cd ${APP} && bun run build`;
 await $`cd ${AGENT} && bun run gen:embedded`;
 
@@ -77,6 +89,8 @@ for (const t of TARGETS) {
   }
 }
 
-// Keep the repo clean: the generated manifest must not be committed.
-await $`cd ${AGENT} && git checkout -- src/embedded-manifest.ts`;
+} finally {
+  // Restore exactly what the caller had, including on failed compilation.
+  writeFileSync(manifest, originalManifest);
+}
 console.log(`[build:bin] done — binaries in ${OUT}`);

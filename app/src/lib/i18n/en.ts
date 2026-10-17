@@ -126,11 +126,14 @@ curl -fsSL https://pocketshell.net/install.sh | sh
     },
   },
   settings: {
+    eink: {"label": "E-ink mode", "desc": "Saved in this browser. Each mode remembers its theme, sizes and keyboard.", "on": "On", "off": "Off"},
+    uiSize: {"label": "Interface text size", "compact": "Compact", "comfortable": "Comfortable", "large": "Large"},
     theme: {
       label: "Appearance",
-      desc: "Seven palettes, terminal ANSI colours included — or drop in your own Ghostty theme",
+      desc: "Eight palettes, terminal ANSI colours included — or drop in your own Ghostty theme",
       // The seven built-ins. Names match app/themes/<id>.ghostty; a new one needs
       // an entry here and in zh.ts.
+      eink: "E-ink contrast",
       "cream-dark": "Cream Dark",
       "cream-light": "Cream Light",
       "gruvbox-dark": "Gruvbox Dark",
@@ -331,6 +334,7 @@ curl -fsSL https://pocketshell.net/install.sh | sh
     },
   },
   terminal: {
+    size: {"self": "This tab controls size", "other": "Another client controls size", "none": "Size released", "release": "Release size", "acquire": "Take size control", "migrate": "Restore inherited policy", "migrateConfirm": "This window is manual; its original policy is unknown. Inherit the global policy? Tasks keep running. Existing hard line breaks cannot be undone.", "failed": "Size operation failed. Check the window state again.", "tooSmall": "Less than 20 columns or 4 rows available. Reduce terminal text size, close the keyboard or rotate the screen. Remote size is unchanged."},
     seeding: "Loading session history…",
     seedRetrying: "Timed out — retrying…",
     seedFailed: "Could not load session history",

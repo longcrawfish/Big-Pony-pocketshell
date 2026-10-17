@@ -3,7 +3,7 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { svelteTesting } from "@testing-library/svelte/vite";
 import { resolve } from "node:path";
 import { cpSync, existsSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { buildId } from "../scripts/build-id";
 import pkg from "./package.json" with { type: "json" };
 
 // 【2026-08-28 交付盲区】版本串带 git 短 SHA：SW 按版本桶缓存、注册 URL 是
@@ -13,9 +13,7 @@ import pkg from "./package.json" with { type: "json" };
 // AGENT_VERSION（version.ts，经 --define 注入同一 SHA）同源同格式——
 // update.ts 的 shouldReloadAfterUpdate 对二者做严格相等比较。
 // git 不可用时（如 tarball 构建）退回纯 semver，与 agent 侧的退化一致。
-const gitSha = (() => {
-  try { return execSync("git rev-parse --short HEAD").toString().trim(); } catch { return ""; }
-})();
+const gitSha = process.env.PS_BUILD_SHA ?? buildId(resolve(import.meta.dirname, ".."));
 
 // 演示专用静态资产（二维码、预览 fixture）单独放 public-demo/，**不进 public/**。
 // 理由：vite 会无条件把整个 publicDir 拷进 dist，publicDir 又只能指一个目录——

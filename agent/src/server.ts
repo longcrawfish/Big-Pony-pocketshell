@@ -4,7 +4,7 @@
 // S4a: wrapped in SecureChannel handshake — plaintext message loop unchanged.
 // S4b: in-channel pairing — pending state, pair verify, registry∪env authorize.
 import type { ServerWebSocket } from "bun";
-import { loadConfig, type AgentConfig, resolveTlsMaterial, buildPairingString, resolveAdvertise } from "./config";
+import { loadConfig, OFFICIAL_UPDATE_REPO, type AgentConfig, resolveTlsMaterial, buildPairingString, resolveAdvertise } from "./config";
 import { TerminalService } from "./terminal";
 import { ShellService } from "./shell-service";
 import { ReplayService, tailWithinBudget, GAP_BACKFILL_BUDGET_BYTES } from "./replay";
@@ -34,6 +34,7 @@ import { downloadAndVerify, type Phase } from "./update-apply";
 import { versionMatchesRelease } from "./update-core";
 import { signBinary } from "./codesign-provision";
 import { restartSelf } from "./self-restart";
+import { swapAndRestart } from "./update-swap";
 import { NotificationService, type DevicePresence } from "./notify-service";
 import { wireClaude, unwireClaude, wireCodex, unwireCodex, wireOpencode, unwireOpencode, wireKimi, unwireKimi, type WireResult } from "./notify-wire";
 import { ContextStore } from "./context-store";
@@ -47,7 +48,7 @@ import { runCli } from "./cli-entry";
 // 工具」——includes(undefined) 返回 false，运行时语义不变。
 function isAiTool(t: string | undefined): t is AiTool { return (AI_TOOLS as readonly string[]).includes(t as string); }
 import { ensureVapid, realPushSender } from "./web-push";
-import { renameSync, copyFileSync, chmodSync } from "node:fs";
+import { copyFileSync, chmodSync } from "node:fs";
 import { dirname, join as pathJoin } from "node:path";
 import { homedir } from "node:os";
 import { $ } from "bun";
@@ -72,7 +73,7 @@ export function applyGate(
   // so the version banner and "update available" UI keep functioning — you just
   // have to install a fork's build deliberately instead of having the agent
   // swap its own binary on the say-so of an env var.
-  if (!official) return { started: false, reason: "unofficial_repo" };
+  if (!official || repo !== OFFICIAL_UPDATE_REPO) return { started: false, reason: "unofficial_repo" };
   if (applying) return { started: false, reason: "in_progress" };
   if (!cache?.canApply || !cache.latest) return { started: false, reason: cache?.reason ?? "no_release_info" };
   return { started: true, latest: cache.latest };
@@ -100,7 +101,7 @@ interface Deps {
 // 这两个方法已经改成非二进制帧必抛（rpc-router.ts 的 blobOf），所以这个字段
 // **不是可选装饰，是让上传/保存不失败的必要前提**。两个 sessions 发送点
 // （广播 + listSessions 回复）共用同一个常量，防止两处各自维护漂移出偏差。
-const AGENT_FEATURES: string[] = ["bin"];
+const AGENT_FEATURES: string[] = ["bin", "size-control-v1"];
 
 export function startServer(deps: Deps = {}) {
   const config = deps.config ?? loadConfig();
@@ -113,7 +114,7 @@ export function startServer(deps: Deps = {}) {
   // rpc handler 通过 ctx.config.diag 判断，所以覆盖必须落到传下去的那份 config
   // 上，否则 deps.diag 只影响 server.ts 自己的三处埋点，rpc 侧的两处仍走原值。
   const rpcConfig: AgentConfig = deps.diag === undefined ? config : { ...config, diag: diagOn };
-  const terminal = deps.terminal ?? new TerminalService();
+  const terminal = deps.terminal ?? new TerminalService({ runDir: config.runDir, socket: config.tmuxSocket, sizeFile: pathJoin(config.keyDir, "size-control.json") });
   const replay = deps.replay ?? new ReplayService(config.replayBufferBytes);
   const contextStore = new ContextStore();
 
@@ -179,6 +180,9 @@ export function startServer(deps: Deps = {}) {
   };
 
   interface Conn {
+    sizeId?: string;
+    sizeSessions?: Set<string>;
+    sizeActiveSession?: string | null;
     ws: ServerWebSocket<unknown>;
     channel: SecureChannel;
     ready: boolean;
@@ -230,6 +234,18 @@ export function startServer(deps: Deps = {}) {
   const broadcastAll = (msg: ServerMsg) => {
     for (const conn of conns.values()) sendSecure(conn, msg);
   };
+
+  const sizeActor = (conn: Conn) => ({ device: conn.remoteStatic ?? "", connection: conn.sizeId ??= crypto.randomUUID() });
+  const pushSizes = () => {
+    for (const conn of conns.values()) for (const session of conn.sizeSessions ?? []) {
+      try {
+        const state = terminal.sizeControl?.status(session, sizeActor(conn));
+        if (state) sendSecure(conn, { type: "sizeState", state });
+      } catch { /* deleted window, next roster reconciles it */ }
+    }
+  };
+  const sizeTimer = setInterval(() => { terminal.sizeControl?.tick(); pushSizes(); }, 5_000);
+  sizeTimer.unref();
 
   // Number every output chunk, then fan out to subscribed clients.
   // A2: bursts are batched per session (>=4KB or 8ms window) into ONE replay
@@ -526,7 +542,6 @@ export function startServer(deps: Deps = {}) {
     void (async () => {
       const target = process.execPath;
       const newPath = pathJoin(dirname(target), ".pocketshell.new");
-      let swapped = false;
       try {
         // Download + checksum-verify into keyDir/updates/ (may be on a
         // different filesystem than execPath — see the copy+rename below).
@@ -554,18 +569,12 @@ export function startServer(deps: Deps = {}) {
           throw new Error(`smoke check failed: got "${out.trim()}", want "${gate.latest}"`);
         }
         emit("applying");
-        try { copyFileSync(target, `${target}.prev`); } catch { /* best-effort backup */ }
-        renameSync(newPath, target); // same-dir rename: atomic
-        swapped = true;
-        emit("restarting");
-        restartSelf();
+        swapAndRestart(newPath, target, () => {
+          emit("restarting");
+          terminal.sizeControl?.dispose();
+          restartSelf();
+        });
       } catch (e) {
-        if (swapped) {
-          // Swap succeeded but something after it failed (e.g. restart threw
-          // instead of exiting) — restore the previous binary rather than
-          // leave the box on an unverified swap with no rollback.
-          try { renameSync(`${target}.prev`, target); } catch { /* best-effort rollback */ }
-        }
         applying = false;
         emit("error", { message: e instanceof Error ? e.message : String(e) });
       }
@@ -732,6 +741,7 @@ export function startServer(deps: Deps = {}) {
           // re-attach, so without this the session would silently stop
           // streaming to every subscribed conn.
           for (const c of conns.values()) {
+            if (c.sizeSessions?.delete(msg.sessionId)) c.sizeSessions.add(msg.name);
             if (c.subscriptions.delete(msg.sessionId)) c.subscriptions.add(msg.name);
             if (c.needsResyncSessions.delete(msg.sessionId)) c.needsResyncSessions.add(msg.name);
           }
@@ -763,6 +773,7 @@ export function startServer(deps: Deps = {}) {
         break;
       }
       case "detach":
+        terminal.sizeControl?.grace(sizeActor(conn), msg.sessionId);
         conn.subscriptions.delete(msg.sessionId);
         conn.needsResyncSessions.delete(msg.sessionId);
         break;
@@ -792,7 +803,10 @@ export function startServer(deps: Deps = {}) {
         // 丢弃而非夹取：夹到 20 列照样污染，保住上一次的正确尺寸才是对的。
         if (!isSaneSize(msg.cols, msg.rows)) break;
         if (shell.has(msg.sessionId)) shell.resize(msg.sessionId, msg.cols, msg.rows);
-        else terminal.resize(msg.sessionId, msg.cols, msg.rows);
+        else {
+          try { terminal.resize(msg.sessionId, msg.cols, msg.rows, sizeActor(conn), msg.sizeToken); } catch { /* refuse unsafe resize */ }
+          pushSizes();
+        }
         break;
       case "kill":
         if (shell.has(msg.sessionId)) shell.kill(msg.sessionId);
@@ -800,6 +814,11 @@ export function startServer(deps: Deps = {}) {
         break;
       case "ping": sendSecure(conn, { type: "pong" }); break;
       case "presence":
+        if (conn.sizeActiveSession && conn.sizeActiveSession !== msg.activeSessionId) {
+          terminal.sizeControl?.grace(sizeActor(conn), conn.sizeActiveSession);
+        }
+        conn.sizeActiveSession = msg.activeSessionId;
+        if (!msg.foreground) terminal.sizeControl?.grace(sizeActor(conn));
         if (conn.remoteStatic) {
           notifyPresence.set(conn.remoteStatic, { pubKey: conn.remoteStatic, foreground: msg.foreground, activeSessionId: msg.activeSessionId });
         }
@@ -878,6 +897,25 @@ export function startServer(deps: Deps = {}) {
         break;
       case "rpc": {
         const { id, method, params, acceptEnc } = msg;
+        if (method.startsWith("term.size.")) {
+          try {
+            const p = params as { session?: string; token?: string; revision?: string; window?: string; force?: boolean; cols?: number; rows?: number };
+            if (!p || typeof p.session !== "string" || !p.session || shell.has(p.session) || !terminal.sizeControl) throw new Error("size control unavailable");
+            (conn.sizeSessions ??= new Set()).add(p.session);
+            const control = terminal.sizeControl, actor = sizeActor(conn);
+            let result;
+            switch (method) {
+              case "term.size.status": result = control.status(p.session, actor); break;
+              case "term.size.acquire": result = control.acquire(p.session, actor, p.revision ?? "", p.force === true, p.cols!, p.rows!); break;
+              case "term.size.release": result = control.release(p.session, actor, p.token); break;
+              case "term.size.renew": result = control.renew(p.session, actor, p.token); break;
+              case "term.size.migrate": result = control.migrate(p.session, actor, p.window ?? "", p.revision ?? ""); break;
+              default: throw new Error("unknown size operation");
+            }
+            sendRpcResult(conn, id, result, acceptEnc, method); pushSizes();
+          } catch (e) { sendSecure(conn, { type: "response", id, ok: false, error: { code: "size_control", message: String(e) } }); }
+          return;
+        }
         // 二进制帧带来的 blob 注入 params，让 parse.* 能像读普通字段一样读它。
         // 用一个不可能与线上字段冲突的键，避免恶意的 JSON rpc 伪造它。
         const p2 = blob === undefined
@@ -894,6 +932,7 @@ export function startServer(deps: Deps = {}) {
             claudeSettingsPath: toolPaths.claude, agentBin, doWire, runApply,
             id,
             devicePub: conn.remoteStatic,
+            sizeActor: sizeActor(conn),
             sendResult: (result) => sendRpcResult(conn, id, result, acceptEnc, method),
             sendBinary: (meta, blob) => sendRpcBinary(conn, id, meta, blob, acceptEnc),
             sendError: (code, message) => sendSecure(conn, { type: "response", id, ok: false, error: { code, message } }),
@@ -1120,6 +1159,7 @@ export function startServer(deps: Deps = {}) {
       open(ws) { onOpen(ws, (ws as any).remoteAddress ?? ""); },
       close(ws) {
         const conn = conns.get(ws);
+        if (conn) terminal.sizeControl?.grace(sizeActor(conn));
         conns.delete(ws);
         // Reclaim this device's preview tokens once it has no live socket left.
         if (conn?.remoteStatic && ![...conns.values()].some((c) => c.remoteStatic === conn.remoteStatic)) {
@@ -1148,7 +1188,7 @@ export function startServer(deps: Deps = {}) {
     void (async () => {
       try {
         const r = await checkLatest({ repo, current: AGENT_VERSION });
-        writeCache(config.keyDir, { ...r, checkedAt: Date.now() });
+        writeCache(config.keyDir, { ...r, repo, checkedAt: Date.now() });
       } catch { /* best-effort warmup; a later update.check RPC will retry */ }
     })();
   }
@@ -1157,6 +1197,7 @@ export function startServer(deps: Deps = {}) {
     port: server.port,
     url: server.url,
     stop() {
+      clearInterval(sizeTimer);
       clearInterval(pushTimer);
       clearInterval(sweepTimer);
       clearInterval(previewSweepTimer);
@@ -1188,5 +1229,11 @@ export function startServer(deps: Deps = {}) {
 // this is only the entry hook. startServer is passed in because cli-entry.ts
 // must not import back from here (cycle).
 if (import.meta.main) {
-  runCli(process.argv, startServer);
+  runCli(process.argv, (deps) => {
+    const server = startServer(deps);
+    const shutdown = () => { server.stop(); process.exit(0); };
+    process.once("SIGTERM", shutdown);
+    process.once("SIGINT", shutdown);
+    return server;
+  });
 }

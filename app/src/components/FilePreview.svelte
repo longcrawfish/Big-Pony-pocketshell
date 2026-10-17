@@ -391,10 +391,10 @@
      长度，与「横向拖动落到上区 tab 切换手势」这条路由无关。 */
   .pv-content.pad-bot { padding-bottom: 45vh; }
   .seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius-md, 8px); overflow: hidden; }
-  .seg button { height: 30px; padding: 0 12px; background: transparent; color: var(--dim); border: none; font-size: 0.72rem; }
+  .seg button { height: 30px; padding: 0 12px; background: transparent; color: var(--dim); border: none; font-size: var(--ui-small, 0.72rem); }
   .seg button.on { background: var(--primary-bg); color: var(--primary-text); }
-  .pv-btn { min-width: 40px; height: 32px; border: 1px solid var(--line); border-radius: var(--radius-md, 8px); background: transparent; color: var(--text); font-size: 0.78rem; }
-  .pv-label { font-size: 0.72rem; color: var(--dim); }
+  .pv-btn { min-width: 40px; height: 32px; border: 1px solid var(--line); border-radius: var(--radius-md, 8px); background: transparent; color: var(--text); font-size: var(--ui-small, 0.78rem); }
+  .pv-label { font-size: var(--ui-small, 0.72rem); color: var(--dim); }
   .img-wrap { display: flex; justify-content: center; padding: 12px; }
   .img-wrap img { max-width: 100%; height: auto; }
   .video-wrap {
@@ -407,13 +407,13 @@
     background: var(--code-bg);
   }
   .video-wrap video { max-width: 100%; max-height: 100%; }
-  .pv-notice { font-size: 0.7rem; color: var(--amber); padding: 6px 10px; }
-  .codewrap { display: flex; align-items: flex-start; padding: 8px 4px; font-size: 0.72rem; line-height: 1.5; font-family: var(--font-mono); }
+  .pv-notice { font-size: var(--ui-small, 0.7rem); color: var(--amber); padding: 6px 10px; }
+  .codewrap { display: flex; align-items: flex-start; padding: 8px 4px; font-size: var(--ui-small, 0.72rem); line-height: 1.5; font-family: var(--font-mono); }
   .gutter { flex: 0 0 auto; text-align: right; padding-right: 1em; color: var(--code-gutter); user-select: none; }
   .gutter .ln { min-width: 2.2em; }
   .code { margin: 0; white-space: pre; }
   .code code { font: inherit; }
-  .diff { padding: 8px 4px; font-size: 0.72rem; line-height: 1.5; font-family: var(--font-mono); }
+  .diff { padding: 8px 4px; font-size: var(--ui-small, 0.72rem); line-height: 1.5; font-family: var(--font-mono); }
   .hh { color: var(--amber); margin: 6px 0 2px; }
   .dl { white-space: pre; }
   .dl.add { color: var(--ok); }
@@ -424,7 +424,7 @@
   /* 尺寸档位按钮：与其他 .pv-btn 同高，宽度随文案自适应。
      inline-flex 让 SVG 与文字同行居中——.pv-btn 默认的行内布局下图标会贴基线。 */
   .wbtn {
-    min-width: auto; padding: 0 8px; font-size: 0.7rem; white-space: nowrap;
+    min-width: auto; padding: 0 8px; font-size: var(--ui-small, 0.7rem); white-space: nowrap;
     display: inline-flex; align-items: center; gap: 5px;
   }
   /* 图标尺寸与 BottomBar 的 .ic 同规格。flex 容器里必须锁死 flex-shrink，
@@ -448,18 +448,18 @@
   @keyframes wp-up { from { transform: translateY(12px); opacity: 0.4; } to { transform: none; opacity: 1; } }
   .wp-title {
     font-family: var(--font-mono);
-    font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.06em;
+    font-size: var(--ui-small, 0.6rem); text-transform: uppercase; letter-spacing: 0.06em;
     color: var(--dimmer); font-weight: 600; padding: 4px 14px 8px;
   }
   /* flex 而非 block：图标要与文字同行居中对齐，block 下 <svg> 会自己占一行 */
   .wp-item {
     display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
     background: transparent; border: 0; padding: 11px 14px;
-    font-size: 0.75rem; color: var(--text);
+    font-size: var(--ui-small, 0.75rem); color: var(--text);
   }
   .wp-item:active { background: var(--keyhi); }
   .wp-item.on { color: var(--accent); }
-  .wp-sub { color: var(--dim); font-size: 0.66rem; }
+  .wp-sub { color: var(--dim); font-size: var(--ui-small, 0.66rem); }
   .mono { font-family: var(--font-mono); }
 
   /* 前庭障碍用户把动画全关掉，只留静态弹层 */

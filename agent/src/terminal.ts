@@ -1,3 +1,5 @@
+import { SizeControl, type SizeActor } from "./size-control";
+import { tmuxCommand } from "./tmux-command";
 // A2 TerminalService: sessions are tmux sessions; a PTY attaches to each so we
 // can stream bytes. Adds heuristic state inference (via inferState), lastLine
 // capture, and a rename hook. Emits raw bytes only — seq/buffer is A4.
@@ -76,9 +78,9 @@ interface TmuxRosterEntry {
 // Default runner: spawn real tmux. Resilient to a missing binary (returns a
 // non-zero result instead of throwing) so callers degrade gracefully and unit
 // tests without tmux still pass.
-const defaultTmux: TmuxRunner = (args) => {
+export const runTmux = (args: string[], socket?: string): TmuxResult => {
   try {
-    const r = Bun.spawnSync(["tmux", ...args]);
+    const r = Bun.spawnSync(tmuxCommand(args, socket));
     return {
       exitCode: r.exitCode ?? 0,
       stdout: r.stdout ?? new Uint8Array(),
@@ -92,9 +94,9 @@ const defaultTmux: TmuxRunner = (args) => {
 // Async default runner (WP-3a): Bun.spawn keeps the event loop free while
 // tmux runs — the scanner + list() fan out several probes per round, and the
 // old spawnSync versions blocked every RPC/output forward behind them.
-const defaultTmuxAsync: AsyncTmuxRunner = async (args) => {
+export const runTmuxAsync = async (args: string[], socket?: string): Promise<TmuxResult> => {
   try {
-    const proc = Bun.spawn(["tmux", ...args], { stdout: "pipe", stderr: "pipe" });
+    const proc = Bun.spawn(tmuxCommand(args, socket), { stdout: "pipe", stderr: "pipe" });
     const [stdout, stderr, exitCode] = await Promise.all([
       Bun.readableStreamToArrayBuffer(proc.stdout),
       Bun.readableStreamToArrayBuffer(proc.stderr),
@@ -105,6 +107,9 @@ const defaultTmuxAsync: AsyncTmuxRunner = async (args) => {
     return { exitCode: 1, stdout: new Uint8Array(), stderr: new Uint8Array() };
   }
 };
+
+const defaultTmux: TmuxRunner = (args) => runTmux(args);
+const defaultTmuxAsync: AsyncTmuxRunner = (args) => runTmuxAsync(args);
 
 const SCAN_INTERVAL_MS = 1000;
 
@@ -141,23 +146,27 @@ export class TerminalService {
   // UTF-8 LANG to seed into new tmux sessions when the agent's own env has no
   // locale (see ensure() for why this must land on the server, not the client).
   private langFallback: string | null;
+  private runDir?: string;
+  sizeControl?: SizeControl;
 
-  constructor(deps: { tmux?: TmuxRunner; tmuxAsync?: AsyncTmuxRunner; langFallback?: string | null } = {}) {
-    this.tmux = deps.tmux ?? defaultTmux;
+  constructor(deps: { tmux?: TmuxRunner; tmuxAsync?: AsyncTmuxRunner; langFallback?: string | null; runDir?: string; socket?: string; sizeFile?: string } = {}) {
+    this.runDir = deps.runDir;
+    this.tmux = deps.tmux ?? (deps.socket ? (args) => runTmux(args, deps.socket) : defaultTmux);
     // Tests that inject only the sync fake get it wrapped, keeping the async
     // probe paths hermetic; production (no injected runner) gets real
     // non-blocking spawns via defaultTmuxAsync.
     this.tmuxAsync =
-      deps.tmuxAsync ?? (deps.tmux ? async (args) => deps.tmux!(args) : defaultTmuxAsync);
+      deps.tmuxAsync ?? (deps.tmux ? async (args) => deps.tmux!(args) : deps.socket ? (args) => runTmuxAsync(args, deps.socket) : defaultTmuxAsync);
     // `??` would treat an explicit `null` (tests asserting "no fallback") the
     // same as "omitted" and recompute a default — check presence instead so
     // callers can deliberately force no LANG injection.
     this.langFallback =
       deps.langFallback !== undefined ? deps.langFallback : cjkFallbackLang(process.env);
+    if (deps.sizeFile) this.sizeControl = new SizeControl(this.tmux, deps.sizeFile);
     this.scanTimer = setInterval(() => this.scan(), SCAN_INTERVAL_MS);
     // Don't let the scanner keep the process (or `bun test`) alive on its own.
     (this.scanTimer as unknown as { unref?: () => void }).unref?.();
-    void this.clearStalePipes();
+    this.clearStalePipes();
   }
 
   /**
@@ -176,16 +185,16 @@ export class TerminalService {
    * 关管子是幂等且无副作用的（`pipe-pane` 不带命令 = 关闭当前管子），对没有管子的
    * 会话是 no-op，所以可以无差别地对**所有**会话执行，包括不是本 agent 建的。
    */
-  private async clearStalePipes(): Promise<void> {
+  private clearStalePipes(): void {
     try {
       // `-u` 和 roster 同理：launchd 的 C locale 下 tmux 会把非 ASCII 洗成 `_`，
       // 中文名会话的名字对不上，残留管子就清不掉。
-      const res = await this.tmuxAsync(["-u", "list-sessions", "-F", "#{session_name}\t#{pane_pipe}"]);
+      const res = this.tmux(["-u", "list-sessions", "-F", "#{session_name}\t#{pane_pipe}"]);
       if (res.exitCode !== 0) return;
       for (const line of new TextDecoder().decode(res.stdout).split("\n")) {
         const [name, piped] = line.split("\t");
         if (!name || piped !== "1") continue;
-        await this.tmuxAsync(["pipe-pane", "-t", name]);
+        this.tmux(["pipe-pane", "-t", name]);
       }
     } catch { /* 没有 tmux / 没有会话：启动路径不因此失败 */ }
   }
@@ -606,14 +615,8 @@ export class TerminalService {
   // 相隔 0/50/200ms 结果一致（SIGWINCH 合并不构成问题）。**但对不处理 SIGWINCH 的
   // 程序（shell 提示符、cat 出来的静态文本）它什么也不做** —— 那种情况下前端应当
   // 走 capture-pane 重新播种，而不是指望这里。所以 ok 只表示「抖动发出去了」。
-  redraw(name: string): { ok: boolean } {
-    const live = this.sessions.get(name);
-    if (!live) return { ok: false };
-    const { cols, rows } = live.meta;
-    if (cols <= 1) return { ok: false };
-    const a = this.tmux(["resize-window", "-t", name, "-x", String(cols - 1), "-y", String(rows)]);
-    const b = this.tmux(["resize-window", "-t", name, "-x", String(cols), "-y", String(rows)]);
-    return { ok: a.exitCode === 0 && b.exitCode === 0 };
+  redraw(name: string, actor?: SizeActor, token?: string): { ok: boolean } {
+    return { ok: !!actor && !!this.sizeControl?.redraw(name, actor, token) };
   }
 
   // The focused pane's real working directory (tmux #{pane_current_path}).
@@ -633,14 +636,14 @@ export class TerminalService {
   // 手机上的内容覆盖掉 —— 「终端中间丢行」的根因。详见 pane-channel.ts 头部。
   // 现在改成 pipe-pane 取窗格原始字节（相对定位、无备用屏），输入走 send-keys。
   private openChannel(name: string, cols: number, rows: number): PtyHandle {
-    const ch = new PaneChannel(name, { tmux: this.tmux, tmuxAsync: this.tmuxAsync });
+    const ch = new PaneChannel(name, { tmux: this.tmux, tmuxAsync: this.tmuxAsync, runDir: this.runDir });
     ch.onData((chunk) => {
       const live = this.sessions.get(name);
       if (live) live.lastOutputAt = Date.now();
       for (const cb of this.outputCbs) cb(name, chunk);
     });
     ch.onExit((code) => this.onPtyExit(name, code));
-    ch.resize(cols, rows);
+    // Opening/rebuilding an output channel never changes the window policy.
     return ch;
   }
 
@@ -695,7 +698,7 @@ export class TerminalService {
     if (!exists) {
       // `-u`: create the tmux server in UTF-8 mode so panes store/parse CJK
       // correctly regardless of the (often absent under launchd) locale. See attach().
-      const args = ["-u", "new-session", "-d", "-s", name];
+      const args = ["-u", "new-session", "-d", "-s", name, "-x", String(cols), "-y", String(rows)];
       // `-e`: seed the session environment so the shell (and any `claude` it
       // launches) inherit CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1. This forces
       // Claude Code into its classic renderer, which keeps the full transcript in
@@ -791,13 +794,10 @@ export class TerminalService {
     live.pty.write(data);
   }
 
-  resize(name: string, cols: number, rows: number): void {
+  resize(name: string, cols: number, rows: number, actor?: SizeActor, token?: string): void {
+    if (!actor || !this.sizeControl?.resize(name, actor, token, cols, rows)) return;
     const live = this.sessions.get(name);
-    if (!live) return;
-    live.meta.cols = cols;
-    live.meta.rows = rows;
-    live.pty.resize(cols, rows);
-    this.tmux(["resize-window", "-t", name, "-x", String(cols), "-y", String(rows)]);
+    if (live) { live.meta.cols = cols; live.meta.rows = rows; }
   }
 
   async kill(name: string): Promise<void> {
@@ -909,10 +909,16 @@ export class TerminalService {
           attached: false,
         })),
     );
+    const roster = await rosterP;
+    for (const meta of owned) {
+      const actual = roster.find(r => r.name === meta.name);
+      if (actual) { meta.cols = actual.cols; meta.rows = actual.rows; }
+    }
     return [...owned, ...foreign];
   }
 
   dispose(): void {
+    this.sizeControl?.dispose();
     this.disposed = true;
     clearInterval(this.scanTimer);
     for (const l of this.sessions.values()) l.pty.kill();

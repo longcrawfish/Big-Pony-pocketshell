@@ -1,3 +1,4 @@
+import { tmuxCommand } from "./tmux-command";
 // A1 config — S4a adds a persistent Noise static identity + authorized-keys
 // allowlist. S4b adds DeviceRegistry + pairing mode/code + TLS flag.
 import { mkdirSync, readFileSync, writeFileSync, existsSync, chmodSync } from "node:fs";
@@ -16,7 +17,7 @@ import { normalizeInstanceName } from "./instance-brand";
 import { diagEnabled } from "./diag-report";
 
 /** The repo OTA is allowed to auto-apply from. See the `update` block below. */
-export const OFFICIAL_UPDATE_REPO = "Big-Pony/pocketshell";
+export const OFFICIAL_UPDATE_REPO = "longcrawfish/Big-Pony-pocketshell";
 
 export interface AgentConfig {
   listen: { host: string; port: number };
@@ -24,6 +25,8 @@ export interface AgentConfig {
   workspaceRoot: string;
   replayBufferBytes: number;
   keyDir: string;
+  runDir?: string;
+  tmuxSocket?: string;
   identity: { publicKey: Uint8Array; secretKey: Uint8Array };
   authorizedKeys: string[];
   registry: DeviceRegistry;
@@ -146,6 +149,7 @@ export function resolveTlsMaterial(
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AgentConfig {
+  tmuxCommand([], env.POCKETSHELL_TMUX_SOCKET); // validate isolation before creating runtime state
   const keyDir = env.POCKETSHELL_KEY_DIR ?? join(homedir(), ".pocketshell");
   const authorizedKeys = (env.POCKETSHELL_AUTHORIZED_KEYS ?? "")
     .split(",")
@@ -219,7 +223,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const diag = diagEnabled(env, file.diag);
 
   const updateRepoRaw = env.POCKETSHELL_UPDATE_REPO ?? OFFICIAL_UPDATE_REPO;
-  const updateEnabled = env.POCKETSHELL_UPDATE !== "0" && updateRepoRaw !== "off";
+  const updateEnabled = env.POCKETSHELL_UPDATE === "1" && updateRepoRaw !== "off";
   const update = {
     enabled: updateEnabled,
     repo: updateEnabled ? updateRepoRaw : null,
@@ -232,6 +236,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     workspaceRoot: env.POCKETSHELL_WORKSPACE ?? process.cwd(),
     replayBufferBytes: env.POCKETSHELL_REPLAY_BYTES ? Number(env.POCKETSHELL_REPLAY_BYTES) : 256 * 1024,
     keyDir,
+    runDir: env.POCKETSHELL_RUN_DIR ?? join(keyDir, "run"),
+    tmuxSocket: env.POCKETSHELL_TMUX_SOCKET,
     identity: identity,
     authorizedKeys,
     registry,

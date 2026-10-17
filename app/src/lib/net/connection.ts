@@ -1,3 +1,4 @@
+import { SizeClient } from "./size-client";
 // B1 (slice-1, plaintext): the app's single network entry point. WS connect,
 // encode/decode, dispatch. Noise handshake, reconnect state machine, secure
 // storage, pairing, and rpc() are added in later slices.
@@ -122,6 +123,10 @@ export class Connection {
   private queue: (string | Uint8Array)[] = [];
   /** agent 声明的可选能力（sessions.features）。见到 "bin" 才发二进制上行。 */
   private features = new Set<string>();
+  readonly sizeControl: SizeClient;
+  private tmuxSessions = new Set<string>();
+  private sizeActive: string | null = null;
+  private sizeForeground = true;
   private outputCbs: OutputCb[] = [];
   private inputCbs: InputCb[] = [];
   private sessionsCbs: SessionsCb[] = [];
@@ -255,6 +260,7 @@ export class Connection {
         this.pingSentAt = this.sched.now();
         this.pingsOutstanding++;
         this.send({ type: "ping" });
+        if (this.sizeForeground && this.sizeActive) void this.sizeControl.refresh(this.sizeActive).catch(() => {});
       }
     }, this.heartbeatMs);
   }
@@ -298,6 +304,10 @@ export class Connection {
    *   不传即维持原行为，既有全部调用点零变化。
    */
   rpc(method: string, params?: unknown, opts?: { expectBytes?: number }): Promise<unknown> {
+    if (method === "term.redraw" && params && typeof params === "object") {
+      const session = (params as { session?: string }).session;
+      params = { ...params, sizeToken: session ? this.sizeControl.states.get(session)?.token : undefined };
+    }
     const id = String(++this.rpcSeq);
     // acceptEnc: 声明本端认得 gzip 压缩的响应与二进制帧承载。agent 只在看到
     // 对应值时才用，所以老 agent（忽略未知字段）与新 agent 都能正确工作。
@@ -406,6 +416,7 @@ export class Connection {
   }
 
   constructor(opts: ConnectionOpts) {
+    this.sizeControl = new SizeClient((m, p) => this.rpc(m, p), () => this.transportReady() && this.features.has("size-control-v1"), opts.url);
     this.factory = opts.wsFactory ?? ((u) => {
       const ws = new WebSocket(u) as unknown as WebSocketLike;
       ws.binaryType = "arraybuffer";
@@ -581,8 +592,11 @@ export class Connection {
       for (const cb of this.outputCbs) cb(f);
     } else if (msg.type === "resync") {
       for (const cb of this.resyncCbs) cb({ sessionId: msg.sessionId, from: msg.from });
+    } else if (msg.type === "sizeState") {
+      this.sizeControl.accept(msg.state);
     } else if (msg.type === "sessions") {
       if (Array.isArray(msg.features)) this.features = new Set(msg.features);
+      this.tmuxSessions = new Set(msg.sessions.filter(s => s.kind === "tmux").map(s => s.name));
       for (const cb of this.sessionsCbs) cb(msg.sessions);
     } else if (msg.type === "exit") {
       for (const cb of this.exitCbs) cb({ sessionId: msg.sessionId, code: msg.code });
@@ -865,6 +879,14 @@ export class Connection {
     for (const cb of this.inputCbs) cb(sessionId, data);
   }
   resize(sessionId: string, cols: number, rows: number): void {
+    if (this.features.has("size-control-v1") && this.tmuxSessions.has(sessionId)) {
+      this.sizeControl.measured(sessionId, cols, rows);
+      const state = this.sizeControl.states.get(sessionId);
+      if (state?.controller === "self" && state.token && this.transportReady()) {
+        this.send({ type: "resize", sessionId, cols, rows, sizeToken: state.token });
+      }
+      return;
+    }
     this.send({ type: "resize", sessionId, cols, rows });
   }
   kill(sessionId: string): void {
@@ -874,6 +896,8 @@ export class Connection {
     this.send({ type: "listSessions" });
   }
   renameSession(sessionId: string, name: string): void {
+    this.sizeControl.rename(sessionId, name);
+    if (this.sizeActive === sessionId) this.sizeActive = name;
     // 订阅是**按会话名**记的。服务端在 rename 成功后把订阅从旧名迁到新名（server.ts
     // 的 renameSession 分支），本地这份账必须跟着迁，否则两件事会坏：
     //   1. 旧名留在 attached 里 —— 用户拿这个名字**新建**一个会话时，attach() 的
@@ -929,6 +953,8 @@ export class Connection {
   checkUpdate(force = false): Promise<unknown> { return this.rpc("update.check", { force }); }
   applyUpdate(): Promise<unknown> { return this.rpc("update.apply"); }
   sendPresence(foreground: boolean, activeSessionId: string | null): void {
+    this.sizeForeground = foreground; this.sizeActive = activeSessionId;
+    if (foreground && activeSessionId && this.tmuxSessions.has(activeSessionId)) void this.sizeControl.refresh(activeSessionId).catch(() => {});
     this.send({ type: "presence", foreground, activeSessionId });
   }
   onNotification(cb: NotificationCb): () => void {

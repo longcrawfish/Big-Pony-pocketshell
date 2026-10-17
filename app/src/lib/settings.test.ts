@@ -1,6 +1,6 @@
 // app/src/lib/settings.test.ts
 import { test, expect } from "vitest";
-import { DEFAULT_SETTINGS, THEMES, HISTORY_LINE_CHOICES, loadSettings, saveSettings, detectLanguage, type Settings } from "./settings";
+import { DEFAULT_SETTINGS, setEink, THEMES, HISTORY_LINE_CHOICES, loadSettings, saveSettings, detectLanguage, type Settings } from "./settings";
 
 function memStore(): Storage {
   const data = new Map<string, string>();
@@ -21,8 +21,8 @@ test("loadSettings returns defaults when nothing stored", () => {
 
 test("saveSettings persists and loadSettings reads back", () => {
   const store = memStore();
-  saveSettings({ layout: "win", kbLayout: "layered", fontSize: 14, historyLines: 500, vibrate: "off", theme: "cream-light", language: "en", groupTabsByType: false, fontFamily: "ubuntu-mono", htmlPreviewWidth: "tablet" }, store);
-  expect(loadSettings(store)).toEqual({ layout: "win", kbLayout: "layered", fontSize: 14, historyLines: 500, vibrate: "off", theme: "cream-light", language: "en", groupTabsByType: false, fontFamily: "ubuntu-mono", htmlPreviewWidth: "tablet" });
+  saveSettings({ eink: false, uiSize: "compact", layout: "win", kbLayout: "layered", fontSize: 14, historyLines: 500, vibrate: "off", theme: "cream-light", language: "en", groupTabsByType: false, fontFamily: "ubuntu-mono", htmlPreviewWidth: "tablet" }, store);
+  expect(loadSettings(store)).toEqual({ eink: false, uiSize: "compact", layout: "win", kbLayout: "layered", fontSize: 14, historyLines: 500, vibrate: "off", theme: "cream-light", language: "en", groupTabsByType: false, fontFamily: "ubuntu-mono", htmlPreviewWidth: "tablet" });
 });
 
 test("loadSettings fills missing keys with defaults", () => {
@@ -336,4 +336,28 @@ test("htmlPreviewWidth 脏数据回落默认值", () => {
   const store = memStore();
   store.setItem("ps.settings", JSON.stringify({ htmlPreviewWidth: "watch" }));
   expect(loadSettings(store).htmlPreviewWidth).toBe("phone");
+});
+
+
+test("e-ink and ordinary display profiles survive reload and manual edits independently", () => {
+  const store = memStore();
+  const normal: Settings = { ...DEFAULT_SETTINGS, theme: "nord", fontSize: 12.5, uiSize: "large" };
+  let ink = setEink(normal, true);
+  expect(ink.theme).toBe("eink"); expect(ink.fontSize).toBe(18);
+  ink = { ...ink, fontSize: 24, uiSize: "large", theme: "cream-light" };
+  saveSettings(ink, store);
+  const restored = setEink(loadSettings(store), false);
+  expect(restored.theme).toBe("nord"); expect(restored.fontSize).toBe(12.5);
+  expect(restored.uiSize).toBe("large"); expect(restored.kbLayout).toBe("classic");
+  const again = setEink(restored, true);
+  expect(again.fontSize).toBe(24); expect(again.theme).toBe("cream-light");
+});
+test("invalid and legacy display values normalize without losing unrelated preferences", () => {
+  const store = memStore();
+  for (const [input, expected] of [[1000, 24], [-10, 10], ["18", 10], [null, 10], [18.3, 18.5]]) {
+    store.setItem("ps.settings", JSON.stringify({ fontSize: input, uiSize: "huge", eink: "true", language: "en" }));
+    const s = loadSettings(store);
+    expect(s.fontSize).toBe(expected); expect(s.eink).toBe(false); expect(s.uiSize).toBe("compact");
+    expect(s.language).toBe("en");
+  }
 });

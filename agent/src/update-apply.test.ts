@@ -60,3 +60,20 @@ test("downloadAndVerify throws on checksum mismatch", async () => {
     fetchImpl, onPhase: () => {},
   })).rejects.toThrow(/checksum/i);
 });
+
+for (const failure of ["network", "missing-checksum", "missing-asset"]) {
+  test(`failed download ${failure} preserves the installed binary and identity`, async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ps-download-failure-"));
+    const target = join(dir, "agent"), key = join(dir, "agent_key");
+    await Bun.write(target, "old"); await Bun.write(key, "identity");
+    const fetchImpl = (async () => {
+      if (failure === "network") throw new Error("offline");
+      if (failure === "missing-asset") return new Response("missing", { status: 404 });
+      return new Response("");
+    }) as unknown as typeof fetch;
+    await expect(downloadAndVerify({ repo: "longcrawfish/Big-Pony-pocketshell", tag: "v1.22.0",
+      keyDir: dir, platform: "linux", arch: "x64", fetchImpl, onPhase: () => {} })).rejects.toThrow();
+    expect(await Bun.file(target).text()).toBe("old");
+    expect(await Bun.file(key).text()).toBe("identity");
+  });
+}

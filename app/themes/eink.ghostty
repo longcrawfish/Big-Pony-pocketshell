@@ -1,0 +1,22 @@
+# Original high-contrast palette for reflective displays.
+background = #ffffff
+foreground = #111111
+cursor-color = #000000
+selection-background = #111111
+selection-foreground = #ffffff
+palette = 0=#111111
+palette = 1=#9b0000
+palette = 2=#005500
+palette = 3=#664400
+palette = 4=#000099
+palette = 5=#660066
+palette = 6=#005555
+palette = 7=#dddddd
+palette = 8=#444444
+palette = 9=#aa0000
+palette = 10=#006600
+palette = 11=#775500
+palette = 12=#0000aa
+palette = 13=#770077
+palette = 14=#006666
+palette = 15=#ffffff

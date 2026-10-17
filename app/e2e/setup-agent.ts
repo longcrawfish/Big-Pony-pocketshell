@@ -20,6 +20,9 @@ const browserSec = new Uint8Array(browserKp.secretKey);
 
 const cfg = loadConfig({
   POCKETSHELL_KEY_DIR: keyDir,
+  POCKETSHELL_RUN_DIR: join(keyDir, "run"),
+  POCKETSHELL_TMUX_SOCKET: join(keyDir, "tmux.sock"),
+  POCKETSHELL_UPDATE: "0",
   POCKETSHELL_AUTHORIZED_KEYS: toB64(browserPub),
   POCKETSHELL_PORT: "0",
   POCKETSHELL_HOST: "127.0.0.1",
@@ -42,5 +45,5 @@ console.log(JSON.stringify(info));
 
 // Keep alive until stdin closes or SIGTERM.
 process.stdin.resume();
-process.on("SIGTERM", () => { srv.stop(); process.exit(0); });
-process.on("SIGINT", () => { srv.stop(); process.exit(0); });
+process.on("SIGTERM", () => { srv.stop(); Bun.spawnSync(["tmux", "-S", join(keyDir, "tmux.sock"), "kill-server"]); process.exit(0); });
+process.on("SIGINT", () => { srv.stop(); Bun.spawnSync(["tmux", "-S", join(keyDir, "tmux.sock"), "kill-server"]); process.exit(0); });

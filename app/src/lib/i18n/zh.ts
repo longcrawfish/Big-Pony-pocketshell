@@ -129,10 +129,13 @@ curl -fsSL https://pocketshell.net/install.sh | sh
     },
   },
   settings: {
+    eink: {"label": "墨水屏模式", "desc": "本浏览器保存。两种模式分别记住主题、字号和键盘布局。", "on": "已开启", "off": "已关闭"},
+    uiSize: {"label": "界面字号", "compact": "紧凑", "comfortable": "舒适", "large": "大字"},
     theme: {
       label: "界面风格",
-      desc: "七套配色，连终端的 ANSI 16 色一起换；也可以放自己的 Ghostty 主题",
+      desc: "八套配色，连终端的 ANSI 16 色一起换；也可以放自己的 Ghostty 主题",
       // 内置 7 套。名字对应 app/themes/<id>.ghostty，加一套要在这里补两处词条。
+      eink: "墨水屏高对比",
       "cream-dark": "奶油深",
       "cream-light": "奶油浅",
       "gruvbox-dark": "Gruvbox 深",
@@ -330,6 +333,7 @@ curl -fsSL https://pocketshell.net/install.sh | sh
     },
   },
   terminal: {
+    size: {"self": "本页控制尺寸", "other": "另一客户端控制尺寸", "none": "尺寸已释放", "release": "释放尺寸", "acquire": "接管尺寸", "migrate": "恢复继承策略", "migrateConfirm": "当前窗口为 manual，原策略未知。是否改为继承全局策略？不会停止任务，已产生的硬换行无法恢复。", "failed": "尺寸操作未完成，请重新检查窗口状态。", "tooSmall": "可用区域不足 20 列或 4 行。请减小终端字号、收起键盘或旋转屏幕；远端尺寸保持不变。"},
     // 开 App 后的第一个等待：term.history（tmux capture + gzip + 可能分片）。
     // 此前是纯黑空终端、零反馈（14 期需求 5）。
     seeding: "正在读取会话历史…",

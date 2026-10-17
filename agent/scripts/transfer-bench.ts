@@ -64,6 +64,8 @@ const clientSec = new Uint8Array(kp.secretKey);
 
 const cfg = loadConfig({
   POCKETSHELL_KEY_DIR: keyDir,
+  POCKETSHELL_TMUX_SOCKET: join(keyDir, "tmux.sock"),
+  POCKETSHELL_RUN_DIR: join(keyDir, "run"),
   POCKETSHELL_AUTHORIZED_KEYS: toB64(clientPub),
   POCKETSHELL_PORT: "0", POCKETSHELL_HOST: "127.0.0.1", POCKETSHELL_UPDATE: "0",
 });

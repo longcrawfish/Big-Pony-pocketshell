@@ -185,25 +185,26 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    height: 40px;
+    min-height: 40px;
+    flex-wrap: wrap;
     box-sizing: border-box;
     padding: 4px 8px;
     background: var(--panel);
     border-bottom: 1px solid var(--line);
     flex: 0 0 auto;
   }
-  .cm-title { font-size: 0.76rem; font-weight: 600; color: var(--text); }
-  .cm-hint { font-size: 0.66rem; color: var(--dim); }
+  .cm-title { font-size: var(--ui-text, 0.76rem); font-weight: 600; color: var(--text); }
+  .cm-hint { font-size: var(--ui-small, 0.66rem); color: var(--dim); }
   .cm-bar .sp { flex: 1; }
   .cm-btn {
     min-width: 40px;
-    height: 30px;
+    min-height: var(--ui-touch, 30px);
     padding: 0 10px;
     border: 1px solid var(--line);
     border-radius: var(--radius-md, 8px);
     background: transparent;
     color: var(--text);
-    font-size: 0.74rem;
+    font-size: var(--ui-small, 0.74rem);
   }
   .cm-btn.primary {
     background: var(--primary-bg);

@@ -297,9 +297,9 @@ B、C 应分别形成可审查的改动；正式首版同时具备两项能力�
 - 将内置可信更新来源明确设为自己的仓库，保留来源校验。
 - 验证更新目录权限、原子替换、服务重启及升级失败恢复。
 
-当前设置 `POCKETSHELL_UPDATE_REPO` 只能改变检查来源，不能单独允许应用 fork 更新。`OFFICIAL_UPDATE_REPO` 与 `official` 判定仍限制执行来源，不能通过删除校验来绕过。
+设置 `POCKETSHELL_UPDATE_REPO` 只能改变检查来源，不能单独允许任意仓库更新。实施后的 `OFFICIAL_UPDATE_REPO` 是 `longcrawfish/Big-Pony-pocketshell`；应用更新同时核对仓库名与 `official`，保留可信来源边界。OTA 默认关闭，只有显式 `POCKETSHELL_UPDATE=1` 才启用。
 
-当前发布脚本的正式运行包含提交、打标签、推送及创建 Release；`--dry-run` 会构建打包，但不将传入的新版本号写入产物，不能将其视为已完成版本升级的正式包。
+发布脚本的正式运行包含提交、打标签、推送及创建 Release；`--dry-run` 只接受当前包版本，运行检查、构建和打包，不修改版本、提交、标签或远端。脏开发包带内容哈希，不能将其视为已完成版本升级的正式包。
 
 源码参考：[构建脚本](../agent/scripts/build-bin.ts)、[前端版本与缓存](../app/vite.config.ts)、[发布脚本](../scripts/release.sh)、[更新配置](../agent/src/config.ts)、[安装脚本](../install.sh)。
 
@@ -319,3 +319,102 @@ B、C 应分别形成可审查的改动；正式首版同时具备两项能力�
 | 性能通过标准 | 基于同设备、同内容的测量设定 | 基线数据与真机体验 |
 
 这些参数属于后续设计和验证事项；本文不将建议值表述为已验收配置。
+
+## 11. 实施说明与复现方法（2026-10-17）
+
+本节记录实现契约和验证方法。任务状态以 Beads 为准，Bigme 真机、生产部署和公开发布仍须各自满足验收条件。
+
+### 11.1 开发隔离与工具链
+
+使用 `.bun-version` 固定的 Bun 1.3.14，两项目分别执行 `bun install --frozen-lockfile`。Linux 测试依赖 tmux、libarchive-tools（bsdtar）；前端字体测试另需 uv 与 fontTools/brotli。CI 同样安装这些依赖。没有这些依赖时的失败或跳过不计为通过。
+
+```bash
+# 仓库根目录；终端退出用 Ctrl-C，正常恢复尺寸但保留开发会话。
+bash scripts/dev-agent.sh eink
+# 第二实例必须另用端口。
+POCKETSHELL_PORT=18723 bash scripts/dev-agent.sh desktop
+# 仅检查/结束明确命名的开发 tmux，不能省略 -S。
+tmux -S "$PWD/.dev/eink/tmux.sock" list-sessions
+tmux -S "$PWD/.dev/eink/tmux.sock" kill-server
+```
+
+开发脚本固定监听 127.0.0.1，分别使用 `.dev/<实例>/keys`、`run`、`tmux.sock`，关闭 OTA，清除继承的 TMUX/TMUX_PANE/PANE_TAP。所有业务 tmux 命令经同一 argv 构造器；指定 socket 时用 `-S <绝对路径> -f /dev/null`，不加载生产配置。未指定 socket 的现有安装保持原有默认 tmux 行为。测试预加载器创建独立临时目录并在退出时只终止自身 tmux。独立 e2e 与传输基准入口也指定自己的 socket、身份和运行目录。
+
+启动清理是同步操作，在新通道打开之前完成。双可丢弃实例测试检查另一实例的 pipe-pane、窗口尺寸和配置在启动、通道重建及停止后保持一致；未用生产 tmux 做破坏性验证。故障排查先核对进程环境的 socket/key/run 三项，再只对该 socket 执行 `list-sessions`、`list-panes`。正常停止 Agent 不删除会话；只有丢弃整个开发实例时才运行上面的 `kill-server`。
+
+### 11.2 显示偏好
+
+新装仍使用原普通主题、10px 终端和 compact 界面。首次打开墨水屏模式使用 eink 主题、18px 终端、comfortable 界面和 layered 键盘，均为待真机验证的起始值。模式内手动调整会分别保存，退出恢复普通模式偏好；界面档位与终端字号相互独立。终端字号范围 10–24px；有效视口小于 20 列或 4 行时显示提示并保留有效远端尺寸。
+
+eink 是白底深色 ANSI 主题，辅助文字、边框和状态文字加强对比，取消装饰动画、阴影和光标闪烁，选中/禁用另有轮廓或边框。应用输出中的显式 RGB 颜色不被改写，因此自行绘制深色/RGB 背景的 TUI 仍需其自身配置。选择、反色和中文阅读效果仍需 Bigme 真机确认。
+
+### 11.3 尺寸控制契约
+
+只有唯一网页控制者能改变窗口尺寸。订阅输出、发送输入、尺寸控制互相独立：观察端仍可输入和复制，按服务器实际网格显示，窄视口可水平/垂直滚动。原生 tmux 客户端不参加网页能力令牌协议；网页控制期间窗口为 manual，释放恢复策略后原生客户端可继续决定尺寸。
+
+| 事件 | 服务端处理 | 客户端行为 |
+| --- | --- | --- |
+| 首次进入未控制的窗口 | 当前 revision 匹配且本设备未尝试时允许一次自动申请 | 先取得状态和有效测量；已主动释放的窗口不再自动申请 |
+| 点击接管 | 快照/日志先落盘，创建新令牌与租约，旧令牌失效 | 使用当前 revision 显式申请 |
+| resize / redraw | 核对已配对设备、连接、令牌、窗口身份和记录 | 只有控制者附令牌；观察端只记录本地可用视口 |
+| 主动释放 | 立即撤销能力并恢复原策略 | 按 Agent 地址与窗口身份保存已释放标记；刷新/改名不清除 |
+| 后台、切换会话、断线 | 最多保留 30 秒宽限 | 前台活动会话每 10 秒续期；离线不排队控制请求 |
+| 宽限内重连 | 同一已认证设备与旧令牌可续期，新连接轮换令牌 | 旧连接迟到消息无效 |
+| 租约超时 | 撤销能力，恢复策略；失败保留日志重试 | 接受状态通知；不重新自动申请 |
+| 外部修改策略/尺寸/标记 | 放弃旧控制，不覆盖外部新状态 | 更新状态及网格 |
+| 正常退出/重启 | 正常退出恢复；启动时先恢复残留记录 | 重新检查状态 |
+
+默认租约 45 秒、宽限 30 秒、前台心跳 10 秒、状态检查 5 秒；这些是自动化测试参数，不是 Bigme 后台策略的已验收结论。
+
+握手能力为 `size-control-v1`。RPC `term.size.status/acquire/release/renew/migrate` 均带 `session`；acquire 另带 `revision/force/cols/rows`，release/renew 带 `token`，migrate 带 `window/revision`。`sizeState` 返回窗口身份、revision、实际行列、原生策略、控制者 self/other/none，以及仅属于本连接的 token。旧客户端没有令牌的 tmux resize 被忽略；普通 shell 会话保留其既有 resize 语义。刷新终端不能从观察状态偷偷接管。
+
+日志位于实例身份目录的 `size-control.json`，只存窗口身份、原策略/尺寸、随机所有权标记和预计尺寸，不保存密钥或终端内容。身份包含 socket 路径、inode/ctime、tmux pid/start_time 与 window ID，恢复不按会话名称匹配。首次修改前用临时文件写入、fsync、rename、目录 fsync；日志写入失败拒绝接管，损坏日志保留并禁用控制，不能自动猜测原策略。继承策略通过 unset 恢复，显式 latest/largest/smallest 原样恢复，原 manual（含继承全局 manual）同时恢复原尺寸。
+
+窗口删除、服务器重建和外部修改均优先于恢复。Agent 能检测策略、尺寸或标记的实际变化；外部命令若恰好写入完全相同的状态，没有可观察差异，无法据此推断用户意图。历史 manual 的一次性恢复只在当前无控制者时显示，确认提示后重新核对窗口身份和 revision；不会扫描批量修改。旧输出已有硬换行不能逆转，以新输出和程序重绘验收。
+
+### 11.4 验证环境与测量口径
+
+开发起点为 `ccc2366`，本轮修改尚未提交。验证机为 Linux x86_64、Bun 1.3.14、tmux 3.5a；浏览器自动化为 Chromium 148.0.7778.96。初始检查发现依赖缺失（Bun/uv/bsdtar）及两个 Bun 压缩测试的 typed-array 类型错误；补齐依赖并修复类型后运行完整回归。前端原有依赖私有录制数据的 REPRO suites 继续跳过，其范围不算已覆盖。
+
+```bash
+(cd agent && bun run typecheck && bun test)
+(cd app && bun run typecheck && bun run test && bun run build)
+# Python 环境需 Playwright 及 Chromium；PS_BROWSER 可指定本地浏览器路径。
+BUN_BINARY=bun python3 tests/browser/v2.py
+# 两个均支持隔离 socket 的本地版本，使用同一测试身份/浏览器 profile 验证升级回滚。
+PS_OLD_BINARY=/绝对路径/旧开发包 PS_NEW_BINARY=/绝对路径/新开发包 \
+  BUN_BINARY=bun python3 tests/browser/artifact.py
+```
+
+浏览器脚本独立启动 Agent、tmux 与 Vite，覆盖 320/360/390px、横屏、普通模式恢复、双端接管、观察端网格滚动和中文输入、24px 下最小尺寸保护、主动释放跨刷新保持、关闭控制端后宽限恢复。输出目录默认 `/tmp/pocketshell-v2-browser`，保存报告和截图，不输出测试私钥。真实 tmux 测试另覆盖五种原策略、全局继承 manual、迟到能力、外部改动、改名/删除/ID 复用、日志写失败/损坏、实际 SIGKILL 后恢复，以及原生 tmux 客户端释放后的再次缩放。
+
+首轮浏览器报告的首次取得控制为 888ms，仅是本机控制 RPC 的时间；不是首次可读时间或手机输入延迟，不能作为性能改善证据。Bigme HiBreak S Color + Brave Nightly 的实际视口、DPR、缩放、刷新模式、IME、PWA、细笔画和残影尚无测量值。
+
+真机每次记录设备/浏览器版本、CSS 视口、DPR、网页缩放、屏幕刷新模式、界面档位、终端字体/字号、键盘和网络。性能比较在同设备、同内容、同显示条件下进行：
+
+- 输入回显：至少 30 次固定短文本，用录屏逐帧记录按键到完整可读回显，报告 p50/p95 和输入法提交时间；不能以网络 RTT 替代。
+- 首次可读：冷启动与已有缓存分开，各至少 10 次，从进入页面到固定首屏文字完整可读；记录连接与字体加载时间作诊断。
+- 重连：固定编号输出中断网络后恢复，记录可读恢复时间，并核对编号顺序、重复/遗漏和滚动历史；前后台挂起另测。
+- 长输出：使用固定 1000 行编号、中文、ANSI 色与反色文本，保存源文件 SHA256，对照 tmux capture-pane 与浏览器历史；分别验证普通屏和全屏/alternate buffer 应用。
+- 空闲与滚动：静止 60 秒记录浏览器帧/终端重绘和屏幕刷新次数；固定距离滚动比较可读性与残影。后台恢复、旋转、IME 弹出/收回各重复 10 次。
+
+没有这些真机前后数据时，不宣称 E1 的性能优化已完成，也不修改现有 WebGL、流控、重放及 xterm 补丁架构。
+
+### 11.5 构建、发布和回滚边界
+
+`build:bin` 默认拒绝脏源码。开发验证可设 `POCKETSHELL_ALLOW_DIRTY=1`，版本使用 `SHA-dirty-内容哈希`，同一个标识注入前后端与 Service Worker 缓存。`POCKETSHELL_BUILD_TARGETS=bun-linux-x64-baseline` 可缩短本地构建；正式发布脚本固定构建四个平台，避免环境变量导致误打包旧产物。构建成功或失败均恢复调用前的 embedded manifest。
+
+```bash
+# 仅生成开发验证包；版本必须等于当前两个 package.json 的版本。
+bash scripts/release.sh 1.21.5 --dry-run
+# 将来获准发布后，使用递增三段版本；该命令会提交、推送、公开发布。
+# bash scripts/release.sh <新版本> --repo longcrawfish/Big-Pony-pocketshell
+```
+
+正式发布要求干净源码、origin 与内置信任仓库一致、固定 Bun 和 gh 登录。顺序为改版本→提交→冻结安装/类型检查/完整测试→构建→包内许可及 SHA256 核验→本机版本/SHA 核验→标签/推送→显式仓库 Release。平台包名和 `SHA256SUMS.txt` 与更新器匹配，包内包括 LICENSE、THIRD-PARTY-FONTS.md 和 THIRD-PARTY-THEMES.md。dry-run 不能替代已提交正式产物的验收。
+
+更新器默认关闭；自定义环境仓库仅可检查，只有编译内置 fork 可执行。下载校验完成后先创建 `.prev` 备份，再原子替换；备份失败不替换，重启函数抛错时立即恢复旧文件。此回滚覆盖替换阶段和可同步报告的重启失败，不能保证操作系统已接受重启后新进程的健康；真实部署还须核验服务 Restart 策略、重启后健康检查及人工回滚。更新不迁移身份/配对目录，首版无需数据格式回滚。测试文件中的替换/失败恢复不能替代真实 Release 下载与生产升级验收。
+
+更新检查缓存同时绑定当前二进制版本与仓库，升级/切换来源后旧缓存失效。若回滚到尚无此校验的旧二进制，停止服务后仅删除身份目录内派生的 `update-cache.json`，防止其显示新版本的陈旧检查结果；不要删除身份密钥、devices.json 或浏览器站点数据。隔离产物测试覆盖此旧版兼容步骤。
+
+部署前须明确服务实际二进制路径/运行用户、监听地址、身份目录、socket、备份路径与维护窗口，记录权限私有的二进制及必要配置备份。部署后核对 `--version`、页面版本、HTTP/HTTPS、配对保持、PWA 普通刷新/关闭重开、双端尺寸释放与原任务连续性。失败时停服务、恢复备份二进制、保持身份目录原位，再按原服务定义启动并复核。当前没有修改生产服务、创建发布标签或启用生产 OTA。

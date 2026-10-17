@@ -1,4 +1,7 @@
-// Mirror of agent/src/protocol.ts. Keep field names byte-for-byte identical.
+// Wire protocol — authoritative subset for slice 1. Mirrors A3 §3.
+// `data` fields carry base64-encoded bytes (see bytes.ts). All frames are JSON
+// text; switching output to binary WS frames is a later-slice optimization.
+
 export type SessionState = "run" | "wait" | "done" | "idle";
 //  idle = 会话在 tmux 里存活，但本 Agent 未 attach（活动未知）
 
@@ -36,14 +39,21 @@ export interface Snippet {
 // 写操作走下面的专用消息，变更后广播无载荷的 `hintsChanged` 让各端重拉。
 export interface Hint { id: string; text: string }
 
+export interface SizeState {
+  sessionId: string; window: string; revision: string; cols: number; rows: number;
+  policy: string; effective: string; controller: "self" | "other" | "none";
+  token?: string; blocked: boolean;
+}
+
 export type ClientMsg =
   | { type: "attach"; sessionId: string; lastSeq?: number }
+  // detach: unsubscribe from a session's output (fire-and-forget, no response).
+  // Purely additive — old clients never send it and degrade to subscribe-only.
   | { type: "detach"; sessionId: string }
   | { type: "input"; sessionId: string; data: string }
-  | { type: "resize"; sessionId: string; cols: number; rows: number }
-  // cols/rows 可选：新建 tmux 会话时带上本机上次的可信尺寸，让会话**一开始就**按
-  // 本机宽度排版。不带时 agent 退回 80x24，那之后由第一次 refit 纠正——但纠正之前
-  // 上游程序（Claude Code）已经按 80 列打了硬换行进历史，而硬换行 tmux 反折不回来。
+  | { type: "resize"; sessionId: string; cols: number; rows: number; sizeToken?: string }
+  // cols/rows 可选：客户端带上本机上次的可信尺寸，让会话一开始就按该宽度排版
+  // （不带则退回 80x24）。取值仍要过 sane-size 校验——协议是外部输入。
   | { type: "newSession"; name: string; cmd?: string; cwd?: string; kind?: "tmux" | "shell"; cols?: number; rows?: number }
   | { type: "kill"; sessionId: string }
   | { type: "listSessions" }
@@ -61,11 +71,17 @@ export type ClientMsg =
   | { type: "removeHint"; id: string }
   | { type: "clearHints" }
   | { type: "revokeDevice"; pubKey: string }
-  // rpc methods mirror agent/src/protocol.ts: fs.* / git.* (log/branches/status/review) / term.* / terminal.pwd / preview.mint / update.check / update.apply / hints.list
-  // acceptEnc: 客户端声明它认得哪些响应编码（目前只有 "gzip"）。缺省 = 一律不压。
+  // rpc methods: fs.* / git.* (log/branches/status/review) / term.* (history/capture/paneInfo/redraw) /
+  // terminal.pwd / preview.mint / update.check / update.apply / hints.list
+  //
+  // acceptEnc: 客户端声明它认得哪些响应编码（目前只有 "gzip"）。**缺省 = 一律不压**，
+  // 这是向后兼容的全部机制：老客户端不发这个字段，新 agent 就永远给它发未压缩的
+  // response 帧。放顶层而非塞进 params 是安全的——decodeClient 是裸 JSON.parse
+  // 无字段校验，handleClient 的 case "rpc" 只解构它认识的字段。
   | { type: "rpc"; id: string; method: string; params?: unknown; acceptEnc?: string[] };
 
 export type ServerMsg =
+  | { type: "sizeState"; state: SizeState }
   | { type: "output"; sessionId: string; seq: number; data: string }
   // features: agent 支持的可选能力。客户端见到 "bin" 才开启二进制**上行**。
   //
@@ -90,10 +106,24 @@ export type ServerMsg =
   | { type: "hintsChanged" }
   | { type: "response"; id: string; ok: true; result: unknown }
   | { type: "response"; id: string; ok: false; error: { code: string; message: string } }
+  // rpcChunk: one shard of an oversize rpc success response (WP-6). `data` is
+  // base64 of a byte slice of the full `response` message's UTF-8 JSON; shards
+  // of one id go out in index order and the client reassembles the original
+  // response from the concatenated bytes. Purely additive — an old client would
+  // reject the unknown type, but app and agent ship as one versioned bundle
+  // (the agent serves the app), so there is no version-skew surface.
+  //
   // enc: 分片重组后的字节是否经过 gzip。缺省 = 未压缩（原 WP-6 行为）。
   | { type: "rpcChunk"; id: string; index: number; total: number; data: string; enc?: "gzip" }
   // rpcZip: 一个压缩后仍装得下单帧的 rpc 成功响应。data 是 base64(gzip(完整
   // response 帧的 UTF-8 JSON))，客户端解压后得到的就是原样的 response 帧文本。
+  //
+  // 为什么是新帧类型而不是给 response 加字段：response 的形状一个字节不动，
+  // 老客户端的解析路径零风险；且客户端只有这一种帧需要走异步解压，异步分支
+  // 因此被物理隔离，同步快路径不受影响。
+  //
+  // 压缩必须在 Noise 加密**之前**做——WS 帧里装的是密文，密文不可压缩，
+  // Bun 的 perMessageDeflate 对本项目完全无效。
   | { type: "rpcZip"; id: string; data: string }
   // rpcBin: 响应里含**裸字节**的成功回复（今天只有 fs.downloadChunk）。
   // 头里是 {type,id,result}，result 中不含字节；字节走帧尾的 blob。
@@ -115,11 +145,13 @@ export type ServerMsg =
 export function encode(msg: ClientMsg | ServerMsg): string {
   return JSON.stringify(msg);
 }
-export function decodeServer(raw: string): ServerMsg {
-  return JSON.parse(raw) as ServerMsg;
-}
+
 export function decodeClient(raw: string): ClientMsg {
   return JSON.parse(raw) as ClientMsg;
+}
+
+export function decodeServer(raw: string): ServerMsg {
+  return JSON.parse(raw) as ServerMsg;
 }
 
 // term.history 的 rpc 响应体。rpc 信封的 result 是 unknown，两端各自 cast 时

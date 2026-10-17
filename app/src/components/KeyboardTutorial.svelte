@@ -62,12 +62,12 @@
     box-shadow: var(--pop-shadow);
     display: flex; flex-direction: column; gap: 12px;
   }
-  h3 { margin: 0; font-size: 0.92rem; font-weight: 700; color: var(--text); }
-  p { margin: 0; font-size: 0.74rem; line-height: 1.65; color: var(--dim); }
+  h3 { margin: 0; font-size: var(--ui-text, 0.92rem); font-weight: 700; color: var(--text); }
+  p { margin: 0; font-size: var(--ui-small, 0.74rem); line-height: 1.65; color: var(--dim); }
   p b { color: var(--accent-text); font-weight: 700; }
   p.note { opacity: 0.75; }
   .btns { display: flex; gap: 8px; }
-  .btns button { flex: 1; border: 0; border-radius: var(--radius-md); padding: 11px 0; font: inherit; font-size: 0.76rem; }
+  .btns button { flex: 1; border: 0; border-radius: var(--radius-md); padding: 11px 0; font: inherit; font-size: var(--ui-small, 0.76rem); }
   .go { background: var(--primary-bg); color: var(--primary-text); font-weight: 700; }
   .skip { background: var(--key); color: var(--text); }
 
@@ -84,7 +84,7 @@
     border: 1px solid var(--key-line); border-radius: var(--radius-sm);
     box-shadow: var(--key-shadow), var(--key-inset);
     display: inline-flex; align-items: center; justify-content: center;
-    width: 40px; height: 46px; font-size: 0.95rem;
+    width: 40px; height: 46px; font-size: var(--ui-text, 0.95rem);
   }
   .finger {
     position: absolute; width: 30px; height: 30px; border-radius: 50%;
@@ -103,7 +103,7 @@
   @keyframes ktFadeIn { 0%,32% { opacity: 0 } 42%,92% { opacity: 1 } 100% { opacity: 0 } }
   .layerkey {
     position: absolute; bottom: 12px; left: 26%; transform: translateX(-50%);
-    width: 48px; font-size: 0.68rem; color: var(--dim); background: var(--key-mod-bg);
+    width: 48px; font-size: var(--ui-small, 0.68rem); color: var(--dim); background: var(--key-mod-bg);
     animation: ktPress 3s infinite;
   }
   @keyframes ktPress {
@@ -128,7 +128,7 @@
     transform: translate(-50%, -50%); animation: ktLift 6s infinite;
   }
   .dk .sub {
-    position: absolute; font-size: 0.5rem; color: var(--dim);
+    position: absolute; font-size: var(--ui-small, 0.5rem); color: var(--dim);
     width: auto; height: auto; background: none; border: 0; box-shadow: none;
   }
   /* 角标位置与真键帽一致：上滑在右上、下滑在左下（Keyboard.svelte 同款对角摆放） */
@@ -160,7 +160,7 @@
   }
   .fly {
     position: absolute; left: 50%; transform: translateX(-50%);
-    font-size: 1.5rem; font-weight: 700; line-height: 1;
+    font-size: var(--ui-title, 1.5rem); font-weight: 700; line-height: 1;
     color: var(--accent); pointer-events: none;
   }
   .fly.up { animation: ktFlyUp 6s infinite; }

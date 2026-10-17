@@ -28,10 +28,10 @@
   .og-overlay { position: fixed; inset: 0; z-index: 50; background: var(--overlay-bg); display: flex; justify-content: center; align-items: flex-start; }
   .og-panel { background: var(--dlg-bg); border: 1px solid var(--line); border-radius: var(--radius-xl); margin-top: 8vh; width: min(440px, 92vw); max-height: 84vh; display: flex; flex-direction: column; box-shadow: var(--pop-shadow); }
   header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--line); }
-  header h2 { font-size: 0.95rem; font-weight: 700; margin: 0; color: var(--text); }
-  .close { background: transparent; border: 0; color: var(--dim); font-size: 1.3rem; line-height: 1; }
+  header h2 { font-size: var(--ui-text, 0.95rem); font-weight: 700; margin: 0; color: var(--text); }
+  .close { background: transparent; border: 0; color: var(--dim); font-size: var(--ui-title, 1.3rem); line-height: 1; }
   .og-scroll { overflow-y: auto; padding: 12px 16px 18px; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   section { margin-bottom: 16px; }
-  h3 { font-size: 0.82rem; font-weight: 700; color: var(--accent); margin: 0 0 6px; }
-  .g-body { font-size: 0.76rem; line-height: 1.7; color: var(--dim); white-space: pre-line; margin: 0; }
+  h3 { font-size: var(--ui-text, 0.82rem); font-weight: 700; color: var(--accent); margin: 0 0 6px; }
+  .g-body { font-size: var(--ui-small, 0.76rem); line-height: 1.7; color: var(--dim); white-space: pre-line; margin: 0; }
 </style>

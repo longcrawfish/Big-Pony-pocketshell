@@ -168,7 +168,7 @@
   @keyframes pulse { 50% { opacity: 0.35; } }
 
   .name {
-    font-size: 0.78rem;
+    font-size: var(--ui-small, 0.78rem);
     font-weight: 600;
     min-width: 0;
     overflow: hidden;
@@ -177,15 +177,15 @@
   }
   .st {
     font-style: normal;
-    font-size: 0.62rem;
+    font-size: var(--ui-small, 0.62rem);
     font-weight: 400;
     color: var(--dim);
     flex: 0 0 auto;
   }
   .st.w { color: var(--amber); }
-  .last { color: var(--dimmer); font-size: 0.66rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .last { color: var(--dimmer); font-size: var(--ui-small, 0.66rem); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .act {
-    font-size: 0.7rem;
+    font-size: var(--ui-small, 0.7rem);
     color: var(--primary-text);
     background: var(--primary-bg);
     border: 1px solid transparent;
@@ -214,15 +214,15 @@
     text-align: center;
     box-shadow: var(--pop-shadow);
   }
-  .dlg-title { font-size: 0.85rem; font-weight: 700; margin-bottom: 6px; }
-  .dlg-body { font-size: 0.7rem; color: var(--dim); margin-bottom: 16px; line-height: 1.5; }
+  .dlg-title { font-size: var(--ui-text, 0.85rem); font-weight: 700; margin-bottom: 6px; }
+  .dlg-body { font-size: var(--ui-small, 0.7rem); color: var(--dim); margin-bottom: 16px; line-height: 1.5; }
   .dlg-btns { display: flex; gap: 8px; }
   .dlg-btns button {
     flex: 1;
     padding: 9px 0;
     border-radius: var(--radius-md);
     border: 1px solid var(--line);
-    font-size: 0.75rem;
+    font-size: var(--ui-small, 0.75rem);
     background: var(--key);
     color: var(--text);
   }
@@ -233,14 +233,14 @@
     flex: 0 0 auto;
     color: var(--dim);
     padding: 2px 4px;
-    font-size: 0.95rem;
+    font-size: var(--ui-text, 0.95rem);
     line-height: 1;
   }
   .more:active { color: var(--text); }
   .list { min-height: 0; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   .empty { padding: 16px; color: var(--dim); text-align: center; }
   .pnote {
-    font-size: 0.66rem;
+    font-size: var(--ui-small, 0.66rem);
     color: var(--dimmer);
     background: var(--panel);
     border: 1px solid var(--line);

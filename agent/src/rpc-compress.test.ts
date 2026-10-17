@@ -39,7 +39,7 @@ test("a large compressible payload is compressed", () => {
   const out = compressRpcPayload(big, "fs.read", ["gzip"]);
   if (out.kind !== "zip") throw new Error("expected zip");
   // 解出来必须逐字节等于原 payload
-  const raw = Buffer.from(Bun.gunzipSync(out.data));
+  const raw = Buffer.from(Bun.gunzipSync(new Uint8Array(out.data)));
   expect(raw.toString("utf8")).toBe(big);
 });
 

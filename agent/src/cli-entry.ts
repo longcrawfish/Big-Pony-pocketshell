@@ -1,3 +1,4 @@
+import { tmuxCommand } from "./tmux-command";
 // `pocketshell-agent` command-line entry, lifted verbatim out of the
 // `if (import.meta.main)` block at the bottom of server.ts. server.ts now keeps
 // only a thin dispatch that hands `process.argv` here.
@@ -90,7 +91,7 @@ export function runNotifySubcommand(cliArgv: string[]): void {
       const runtime = resolveNotifyRuntime(process.env, {
         tmuxSession: (pane) => {
           try {
-            const p = Bun.spawnSync(["tmux", "display-message", "-p", "-t", pane, "#{session_name}"], { stderr: "ignore" });
+            const p = Bun.spawnSync(tmuxCommand(["display-message", "-p", "-t", pane, "#{session_name}"]), { stderr: "ignore" });
             if (p.exitCode !== 0) return null;
             return new TextDecoder().decode(p.stdout).trim() || null;
           } catch { return null; }
