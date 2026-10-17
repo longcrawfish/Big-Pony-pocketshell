@@ -1,0 +1,1 @@
+{"id":"int-5698768ae3c16c781954a57735763834","kind":"field_change","created_at":"2026-10-17T08:26:01.69795008Z","actor":"longcrawfish","issue_id":"bp-pocketshell-8qs","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"已将需求分析、源码发现、方案及验收标准写入 docs/v2-plan.md；20 个本地链接与空白格式检查通过，仅文档变更。"}}
