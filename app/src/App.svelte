@@ -1137,7 +1137,7 @@
       hasUpdate={updInfo?.hasUpdate ?? false} eink={settings.eink}
       fullscreen={pageFullscreen} onFullscreen={togglePageFullscreen} onUpdate={() => (updOpen = true)} />
     <div class="tabs-wrap">
-      <TopTabs tabs={topTabsView} activeId={activeTopId} onSelect={selectTop} onNew={newSession} onCloseTab={closeTopTab} onCopyPath={copyTabPath} dirtyIds={fileDirty} />
+      <TopTabs sizeControl={conn.sizeControl} online={status === "online"} tabs={topTabsView} activeId={activeTopId} onSelect={selectTop} onNew={newSession} onCloseTab={closeTopTab} onCopyPath={copyTabPath} dirtyIds={fileDirty} />
     </div>
     <button class="fs-btn bottom-toggle" class:expanded={!bottomCollapsed}
       aria-label={bottomCollapsed ? $t('app.bottom.expand') : $t('app.bottom.collapse')}

@@ -97,7 +97,6 @@
   import type { TermHistoryResult } from "../lib/net/protocol";
   import { familyOf, termFontFamily, type FontId } from "../lib/font";
   import { t } from "svelte-i18n";
-  import { tr } from "../lib/i18n";
   import ProgressLine from "./ui/ProgressLine.svelte";
 
   let {
@@ -128,13 +127,6 @@
   } = $props();
 
   let sizeState = $state<import("../lib/net/protocol").SizeState | undefined>();
-  let sizeError = $state(false);
-  let sizeBusy = $state(false);
-  async function sizeAction(action: "acquire" | "release" | "migrate") {
-    sizeBusy = true; sizeError = false;
-    try { await conn.sizeControl[action](sessionId); } catch { sizeError = true; }
-    finally { sizeBusy = false; }
-  }
   $effect(() => {
     if (!conn.sizeControl) return;
     sizeState = conn.sizeControl.states.get(sessionId);
@@ -1759,20 +1751,6 @@
 </script>
 
 <div class="term-wrap" class:hidden={!active} class:observing={sizeState && sizeState.controller !== "self"}>
-  {#if sizeState}
-    <div class="size-controls">
-      <span>{$t(`terminal.size.${sizeState.controller}`)} · {sizeState.cols}×{sizeState.rows}</span>
-      <button disabled={sizeBusy || sizeState.blocked} onclick={() => sizeAction(sizeState?.controller === "self" ? "release" : "acquire")}>
-        {$t(sizeState.controller === "self" ? 'terminal.size.release' : 'terminal.size.acquire')}
-      </button>
-      {#if sizeState.controller === "none" && sizeState.policy === "manual"}
-        <button disabled={sizeBusy || sizeState.blocked} onclick={() => {
-          if (confirm(tr('terminal.size.migrateConfirm'))) void sizeAction("migrate");
-        }}>{$t('terminal.size.migrate')}</button>
-      {/if}
-      {#if sizeState.blocked || sizeError}<span role="status">{$t('terminal.size.failed')}</span>{/if}
-    </div>
-  {/if}
   {#if viewportTooSmall}<div class="size-warning" role="status">{$t('terminal.size.tooSmall')}</div>{/if}
   <div class="term" class:closed bind:this={host}></div>
   {#if seeding || seedRetrying}
@@ -1795,8 +1773,7 @@
 
 <style>
   .term-wrap { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; min-height: 0; }
-  .size-controls, .size-warning { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 8px; font-size: var(--ui-small, 12px); background: var(--panel); border-bottom: 1px solid var(--line); }
-  .size-controls button { min-height: 44px; padding: 4px 8px; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); }
+  .size-warning { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 8px; font-size: var(--ui-small, 12px); background: var(--panel); border-bottom: 1px solid var(--line); }
   .observing .term { overflow: auto; }
   .observing .term :global(.xterm) { min-width: max-content; }
   /* 首屏读取历史时的极淡提示。居中偏上，不遮挡将要出现的第一行输出。 */

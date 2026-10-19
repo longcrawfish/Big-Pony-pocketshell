@@ -26,7 +26,7 @@ export default {
     bannerFirstConnect: "正在连接服务器…",
     empty: {
       title: "开始使用 PocketShell",
-      body: "点右上角 ＋ 新建 tmux / shell 窗口 · 双击上方标签页关闭窗口 · 键盘 Fn + n 也能快捷新建",
+      body: "点右上角 ＋ 新建 tmux / shell 窗口 · 点当前标签内 × 关闭窗口 · 键盘 Fn + n 也能快捷新建",
     },
     topAria: "终端与文件预览",
     instanceMenu: "实例与应用菜单",
@@ -338,7 +338,7 @@ curl -fsSL https://pocketshell.net/install.sh | sh
     },
   },
   terminal: {
-    size: {"self": "本页控制尺寸", "other": "另一客户端控制尺寸", "none": "尺寸已释放", "release": "释放尺寸", "acquire": "接管尺寸", "migrate": "恢复继承策略", "migrateConfirm": "当前窗口为 manual，原策略未知。是否改为继承全局策略？不会停止任务，已产生的硬换行无法恢复。", "failed": "尺寸操作未完成，请重新检查窗口状态。", "tooSmall": "可用区域不足 20 列或 4 行。请减小终端字号、收起键盘或旋转屏幕；远端尺寸保持不变。"},
+    size: {"compact": {"self": "本页", "other": "他端", "none": "释放"}, "controls": "尺寸控制", "short": {"self": "本页控尺寸", "other": "他端控尺寸", "none": "已释放"}, "takeoverHint": "接管后，尺寸将由本页控制，另一客户端会转为观察尺寸。", "offline": "连接已断开，重连后可操作尺寸。", "self": "本页控制尺寸", "other": "另一客户端控制尺寸", "none": "尺寸已释放", "release": "释放尺寸", "acquire": "接管尺寸", "migrate": "恢复继承策略", "migrateConfirm": "当前窗口为 manual，原策略未知。是否改为继承全局策略？不会停止任务，已产生的硬换行无法恢复。", "failed": "尺寸操作未完成，请重新检查窗口状态。", "tooSmall": "可用区域不足 20 列或 4 行。请减小终端字号、收起键盘或旋转屏幕；远端尺寸保持不变。"},
     // 开 App 后的第一个等待：term.history（tmux capture + gzip + 可能分片）。
     // 此前是纯黑空终端、零反馈（14 期需求 5）。
     seeding: "正在读取会话历史…",
@@ -780,7 +780,7 @@ curl -fsSL https://pocketshell.net/install.sh | sh
       },
       tabs: {
         h: "上区标签页",
-        p: "· 单击标签：预览 / 切换该窗口\n· 双击标签：关闭窗口\n· 连点 3 下文件标签：复制文件绝对路径\n· 右上角 ＋：新建 tmux 或 shell 窗口\n· tmux：全程持久，扛断线也扛 Agent 重启，进任务面板\n· shell：隔离前台会话，扛断线但不扛重启，关标签即销毁",
+        p: "· 单击标签：预览 / 切换该窗口\n· 当前 tmux 标签：展开 / 收起尺寸控制，箭头可直接打开\n· 标签内 ×：关闭窗口；Shell / 文件也可双击关闭\n· 连点 3 下文件标签：复制文件绝对路径\n· 右上角 ＋：新建 tmux 或 shell 窗口\n· tmux：全程持久，扛断线也扛 Agent 重启，进任务面板\n· shell：隔离前台会话，扛断线但不扛重启，关标签即销毁",
       },
       icons: {
         h: "图标按钮",

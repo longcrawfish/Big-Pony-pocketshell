@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 BUN = os.environ.get('BUN_BINARY', 'bun')
 OUT = Path(os.environ.get('PS_TEST_OUTPUT', '/tmp/pocketshell-v2-browser'))
 OUT.mkdir(parents=True, exist_ok=True)
-env = dict(os.environ, PATH=str(Path(BUN).parent) + ':' + os.environ['PATH'], VITE_POCKETSHELL_DEV_HELPERS='1')
+env = dict(os.environ, PATH=str(Path(BUN).parent) + ':' + os.environ['PATH'], VITE_POCKETSHELL_DEV_HELPERS='1', PS_E2E_ORIGIN='http://127.0.0.1:5283')
 processes = []
 info = None
 report = {'hardware': 'Chromium emulation; not a Bigme/Brave acceptance', 'checks': [], 'metrics': {}}
@@ -42,6 +42,14 @@ def seed(page, settings=None):
       localStorage.setItem('ps.kbTutSeen.flick','1');
       if(seed.settings && !localStorage.getItem('ps.settings')) localStorage.setItem('ps.settings',JSON.stringify(seed.settings));
     ''')
+
+def size_panel(page):
+    if not page.locator('.size-controls').count():
+        page.locator('.tab.active .size-toggle').click()
+    return page.locator('.size-controls')
+
+def close_size(page):
+    if page.locator('.size-controls').count(): page.keyboard.press('Escape')
 
 try:
     log = open(OUT / 'vite.log', 'w')
@@ -75,13 +83,56 @@ try:
         page = mobile.new_page(); page.on('pageerror', lambda e: errors.append(str(e)))
         seed(page)
         page.goto('http://127.0.0.1:5283')
-        page.wait_for_function('window.pocketshell?.getState().status === "online"')
+        try:
+            page.wait_for_function('window.pocketshell?.getState().status === "online"')
+        except Exception:
+            print('Browser startup errors:', errors, flush=True)
+            print('Browser startup UI:', page.locator('body').inner_text()[:400], flush=True)
+            page.screenshot(path=str(OUT/'startup-failure.png'))
+            raise
         name = 'v2-acceptance'
         first = time.monotonic()
         page.evaluate('(s)=>window.pocketshell.newSession(s)', name)
-        expect(page.locator('.size-controls')).to_contain_text('本页控制尺寸', timeout=15000)
+        expect(size_panel(page)).to_contain_text('本页控制尺寸', timeout=15000)
         report['metrics']['local_first_control_ms'] = round((time.monotonic()-first)*1000)
         check('first entry automatically acquires size control')
+        close_size(page)
+        page.wait_for_timeout(700)
+        grid = tmux('display-message', '-p', '-t', name, '#{window_width}x#{window_height}')
+        term_box = page.locator('.term-wrap:not(.hidden) .term').bounding_box()
+        for _ in range(3):
+            page.locator('.tab.active .name').click()
+            expect(page.locator('.size-controls')).to_be_visible()
+            page.wait_for_timeout(450)
+            assert tmux('display-message', '-p', '-t', name, '#{window_width}x#{window_height}') == grid
+            assert page.locator('.term-wrap:not(.hidden) .term').bounding_box() == term_box
+            page.locator('.tab.active .name').click()
+            expect(page.locator('.size-controls')).to_have_count(0)
+        page.locator('.tab.active .name').dblclick(delay=50)
+        expect(page.locator('.size-controls')).to_have_count(0)
+        expect(page.locator('.dlg')).to_have_count(0)
+        size_panel(page)
+        page.evaluate("window.sizeDismissClicks=0;document.querySelector('.term-wrap:not(.hidden) .term').addEventListener('pointerdown',()=>window.sizeDismissClicks++)")
+        page.locator('.size-backdrop').click(position={'x': 10, 'y': 500})
+        expect(page.locator('.size-controls')).to_have_count(0)
+        assert page.evaluate('window.sizeDismissClicks') == 0
+        assert tmux('display-message', '-p', '-t', name, '#{window_width}x#{window_height}') == grid
+        check('panel toggles preserve real tmux grid and terminal bounds; rapid taps do not close; outside press is consumed')
+        second = 'size-menu-second-session-with-a-long-title'
+        page.evaluate('(s)=>window.pocketshell.newSession(s)', second)
+        expect(page.locator('.tab.active .size-toggle')).to_be_visible()
+        page.locator('.tab.active .size-toggle').click()
+        page.locator('.tab[title="'+name+'"] .size-toggle').click()
+        expect(page.locator('.size-controls')).to_have_attribute('aria-label', '尺寸控制: '+name)
+        close_size(page)
+        page.locator('.tab[title="'+second+'"] .name').click()
+        expect(page.locator('.size-controls')).to_have_count(0)
+        expect(page.locator('.tab.active')).to_have_attribute('title', second)
+        page.evaluate('(s)=>window.pocketshell.enterSession(s)', name)
+        expect(page.locator('.tab.active')).to_have_attribute('title', name)
+        check('inactive labels select without opening; inactive arrows select and open the matching session')
+
+        close_size(page)
         page.evaluate('window.pocketshell.openPanel("set")')
         page.get_by_role('switch').click()
         page.get_by_role('button', name='大字', exact=True).click()
@@ -95,9 +146,23 @@ try:
             assert page.locator('.conn-label').evaluate('(el)=>el.getBoundingClientRect().bottom <= document.querySelector(".topbar").getBoundingClientRect().bottom')
         page.set_viewport_size({'width':360,'height':800})
         page.screenshot(path=str(OUT/'eink-settings.png'))
+        for width, height in [(320,800),(360,800),(390,844),(844,390),(360,300)]:
+            page.set_viewport_size({'width':width,'height':height})
+            panel = size_panel(page)
+            box = panel.bounding_box()
+            assert box['x'] >= 0 and box['x']+box['width'] <= width+1, box
+            assert box['y']+box['height'] <= height+1, box
+            assert page.locator('.tab.active .name').evaluate('(el)=>el.getBoundingClientRect().width >= 20')
+            assert page.locator('.tab.active .size-summary').evaluate('(el)=>el.scrollWidth <= el.clientWidth+1')
+            assert page.locator('.tab.active .x').evaluate('(el)=>el.getBoundingClientRect().right <= document.querySelector(".strip").getBoundingClientRect().right+1')
+            if width == 320: page.screenshot(path=str(OUT/'size-menu-eink-320.png'))
+            close_size(page)
+        page.set_viewport_size({'width':360,'height':800})
+        check('size panel and tab controls fit e-ink large text at 320/360/390px, landscape and reduced keyboard viewport')
         check('large e-ink settings, navigation and contrast at 320/360/390px and landscape')
         page.reload(); page.wait_for_function('window.pocketshell?.getState().status === "online"')
         assert page.evaluate('JSON.parse(localStorage.getItem("ps.settings")).eink') is True
+        close_size(page)
         page.evaluate('window.pocketshell.openPanel("set")')
         page.get_by_role('switch').click()
         normal = page.evaluate('JSON.parse(localStorage.getItem("ps.settings"))')
@@ -105,8 +170,8 @@ try:
         page.get_by_role('switch').click()
         page.evaluate('window.pocketshell.openPanel("kbd")')
         page.evaluate('(s)=>window.pocketshell.enterSession(s)',name)
-        page.locator('.size-controls button').first.click()  # explicitly reacquire after reload
-        expect(page.locator('.size-controls')).to_contain_text('本页控制尺寸')
+        size_panel(page).locator('.actions button').first.click()  # explicitly reacquire after reload
+        expect(size_panel(page)).to_contain_text('本页控制尺寸')
         check('reload persists e-ink preferences; mode exit restores ordinary preferences')
         desktop = browser.new_context(viewport={'width':1280,'height':900},locale='en-US')
         other = desktop.new_page(); other.on('pageerror', lambda e: errors.append(str(e)))
@@ -114,10 +179,10 @@ try:
         other.goto('http://127.0.0.1:5283')
         other.wait_for_function('window.pocketshell?.getState().status === "online"')
         other.evaluate('(s)=>window.pocketshell.enterSession(s)',name)
-        expect(other.locator('.size-controls')).to_contain_text('Another client controls size',timeout=15000)
+        expect(size_panel(other)).to_contain_text('Another client controls size',timeout=15000)
         other.get_by_role('button',name='Take size control',exact=True).click()
-        expect(other.locator('.size-controls')).to_contain_text('This tab controls size')
-        expect(page.locator('.size-controls')).to_contain_text('另一客户端控制尺寸')
+        expect(size_panel(other)).to_contain_text('This tab controls size')
+        expect(size_panel(page)).to_contain_text('另一客户端控制尺寸')
         remote_cols = int(tmux('display-message','-p','-t',name,'#{pane_width}'))
         assert remote_cols > 80
         assert page.locator('.term-wrap.observing .term').evaluate('(el)=>el.scrollWidth > el.clientWidth')
@@ -142,6 +207,7 @@ try:
         assert captured[1].endswith('R') and len(captured[1])==remote_cols
         page.locator('.term-wrap.observing .term').evaluate('(el)=>el.scrollLeft=el.scrollWidth')
         page.screenshot(path=str(OUT/'alternate-screen-right-edge.png'))
+        close_size(other)
         other.get_by_role('button',name='✂ Quick ops',exact=True).click()
         other.get_by_role('button',name='Select text',exact=True).click()
         expect(other.locator('.cm-rows')).to_contain_text('全屏中文')
@@ -153,18 +219,20 @@ try:
         other.locator('.cm-bar .primary').click()
         page.evaluate('window.pocketshell.sendInput("\\n")')
         check('alternate screen, Chinese, ANSI/inverse output and desktop selection remain usable')
+        size_panel(other)
         other.get_by_role('button',name='Release size',exact=True).click()
-        expect(other.locator('.size-controls')).to_contain_text('Size released')
+        expect(size_panel(other)).to_contain_text('Size released')
         assert tmux('show-options','-wv','-t',name,'window-size') == ''
         other.set_viewport_size({'width':900,'height':600}); page.set_viewport_size({'width':800,'height':360})
         other.reload(); other.wait_for_function('window.pocketshell?.getState().status === "online"')
         other.evaluate('(s)=>window.pocketshell.enterSession(s)',name)
-        expect(other.locator('.size-controls')).to_contain_text('Size released')
+        expect(size_panel(other)).to_contain_text('Size released')
         assert tmux('show-options','-wv','-t',name,'window-size') == ''
         check('release restores inheritance; rotation and reload cannot reacquire')
         page.set_viewport_size({'width':360,'height':800})
         page.get_by_role('button',name='接管尺寸',exact=True).click()
-        expect(page.locator('.size-controls')).to_contain_text('本页控制尺寸')
+        expect(size_panel(page)).to_contain_text('本页控制尺寸')
+        close_size(page)
         page.evaluate('window.pocketshell.openPanel("set")')
         slider=page.locator('input[type="range"]')
         slider.evaluate('(el)=>{el.value="24";el.dispatchEvent(new Event("input",{bubbles:true}));}')
@@ -177,7 +245,7 @@ try:
         check('24px terminal font keeps 20x4 guard and exposes/recoveries a too-small viewport')
         # Real background/connection-loss grace, with the observer still connected.
         page.close()
-        expect(other.locator('.size-controls')).to_contain_text('Size released',timeout=40000)
+        expect(size_panel(other)).to_contain_text('Size released',timeout=40000)
         assert tmux('show-options','-wv','-t',name,'window-size') == ''
         check('closed controller expires and restores policy while observer remains connected')
         assert errors == [], errors

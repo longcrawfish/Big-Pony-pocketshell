@@ -1,27 +1,92 @@
 <script lang="ts">
   import { t } from "svelte-i18n";
+  import { tick } from "svelte";
+  import { tr } from "../lib/i18n";
+  import SizeControlPanel from "./SizeControlPanel.svelte";
+  import type { SizeClient } from "../lib/net/size-client";
   import { stateDotClass } from "../lib/ui/session-view";
   import { stepTap, TAP_RESET, TAP_WINDOW_MS, type TapState } from "../lib/ui/top-tabs";
-  import type { SessionState } from "../lib/net/protocol";
+  import type { SessionState, SizeState } from "../lib/net/protocol";
 
   type TabView =
     | { kind: "term"; id: string; title: string; state: SessionState; closed: boolean; shell: boolean }
     | { kind: "file"; id: string; title: string; path: string };
 
-  let { tabs, activeId, onSelect, onNew, onCloseTab, onCopyPath, dirtyIds }: {
+  let { tabs, activeId, onSelect, onNew, onCloseTab, onCopyPath, dirtyIds, sizeControl, online = true }: {
     tabs: TabView[]; activeId: string;
     onSelect: (id: string) => void;
     onNew: (name: string, kind: "tmux" | "shell") => void;
     onCloseTab: (id: string) => void;
     onCopyPath?: (id: string) => void;
     dirtyIds?: Set<string>;
+    sizeControl?: SizeClient;
+    online?: boolean;
   } = $props();
+
+  const panelId = $props.id();
+  let sizeStates = $state(new Map<string, SizeState>());
+  let sizeErrors = $state(new Set<string>());
+  let sizeBusy = $state(new Set<string>());
+  let openSizeId = $state<string | null>(null);
+  let sizeAnchor = $state<HTMLElement>();
+  let focusSizePanel = $state(false);
+  const openSizeState = $derived(openSizeId ? sizeStates.get(openSizeId) : undefined);
+  const openSizeTab = $derived(tabs.find(tab => tab.id === openSizeId));
+  $effect(() => {
+    const client = sizeControl;
+    sizeStates = new Map(client?.states);
+    sizeErrors = new Set();
+    sizeBusy = new Set();
+    openSizeId = null;
+    return client?.on(s => {
+      sizeStates = new Map(sizeStates).set(s.sessionId, s);
+    });
+  });
+  $effect(() => {
+    if (openSizeId && (openSizeId !== activeId || !openSizeTab ||
+      openSizeTab.kind !== "term" || openSizeTab.closed || openSizeTab.shell || !openSizeState)) openSizeId = null;
+  });
+  function hasSize(tab: TabView) {
+    return tab.kind === "term" && !tab.shell && !tab.closed && sizeStates.has(tab.id);
+  }
+  function closeSize(restoreFocus = false) {
+    openSizeId = null;
+    if (restoreFocus) sizeAnchor?.focus({ preventScroll: true });
+  }
+  async function toggleSize(tab: TabView, anchor: HTMLElement, keyboard = false) {
+    if (!hasSize(tab)) return;
+    onTabCancel();
+    if (openSizeId === tab.id) { closeSize(); return; }
+    if (activeId !== tab.id) onSelect(tab.id);
+    sizeAnchor = anchor;
+    focusSizePanel = keyboard;
+    // Let selection settle before opening: programmatic tab changes always dismiss.
+    await tick();
+    if (activeId === tab.id && hasSize(tab)) openSizeId = tab.id;
+  }
+  function selectTab(tab: TabView, anchor: HTMLElement, keyboard = false) {
+    if (tab.id === activeId && hasSize(tab)) { void toggleSize(tab, anchor, keyboard); return; }
+    closeSize();
+    onSelect(tab.id);
+  }
+  async function sizeAction(action: "acquire" | "release" | "migrate") {
+    // Capture both session and client; a pending response must never target a newly selected tab.
+    const session = openSizeId, client = sizeControl;
+    const state = session ? sizeStates.get(session) : undefined;
+    if (!session || !client || !state || !online || state.blocked || sizeBusy.has(session)) return;
+    if (action === "migrate" && !confirm(tr('terminal.size.migrateConfirm'))) return;
+    sizeBusy = new Set(sizeBusy).add(session);
+    sizeErrors = new Set([...sizeErrors].filter(id => id !== session));
+    try { await client[action](session); }
+    catch { if (client === sizeControl) sizeErrors = new Set(sizeErrors).add(session); }
+    finally { if (client === sizeControl) sizeBusy = new Set([...sizeBusy].filter(id => id !== session)); }
+  }
 
   // New-session modal
   let adding = $state(false);
   let draft = $state("");
   let draftKind = $state<"tmux" | "shell">("tmux");
-  function openAdd() { draft = ""; draftKind = "tmux"; adding = true; }
+  function openAdd() { closeSize(); draft = ""; draftKind = "tmux"; adding = true; }
   function submitAdd() {
     const name = draft.trim();
     if (name) onNew(name, draftKind);
@@ -42,8 +107,8 @@
     closing = null;
   }
 
-  // Tap gestures (requirement 11): single tap = select (immediate), double =
-  // close, triple (file tabs only) = copy absolute path. The FSM lives in
+  // Shell/file tabs retain their multi-tap gestures. tmux uses repeated taps
+  // for its size panel and closes only through the explicit ×. The FSM lives in
   // stepTap (pure, unit-tested in top-tabs.test.ts); this component only runs
   // its side effects. Long-press was removed because on phones it fires the
   // native text-selection / callout menu.
@@ -57,7 +122,7 @@
   let tapState: TapState = TAP_RESET;
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
   function clearCloseTimer() { if (closeTimer) { clearTimeout(closeTimer); closeTimer = undefined; } }
-  function openClose(tab: TabView, at: number) { closing = tab; closingAt = at; }
+  function openClose(tab: TabView, at: number) { closeSize(); closing = tab; closingAt = at; }
 
   function onTabDown(e: PointerEvent, t: TabView) {
     downId = t.id; downX = e.clientX; downY = e.clientY;
@@ -66,13 +131,18 @@
     if (downId !== t.id) { downId = ""; return; } // released off the tab it started on
     downId = "";
     const dragged = Math.abs(e.clientX - downX) > 8 || Math.abs(e.clientY - downY) > 8;
+    if (t.kind === "term" && !t.shell) {
+      onTabCancel();
+      if (!dragged) selectTab(t, e.currentTarget as HTMLElement);
+      return;
+    }
     const now = e.timeStamp;
     // Any new tap cancels a pending deferred close (stale tab, or the 3rd tap).
     clearCloseTimer();
     const { state, action } = stepTap(tapState, { id: t.id, kind: t.kind, t: now, dragged });
     tapState = state;
     switch (action.type) {
-      case "select": onSelect(t.id); break;
+      case "select": selectTab(t, e.currentTarget as HTMLElement); break;
       case "deferClose": closeTimer = setTimeout(() => { closeTimer = undefined; openClose(t, e.timeStamp + TAP_WINDOW_MS); }, TAP_WINDOW_MS); break;
       case "closeNow": openClose(t, now); break;
       case "copy": onCopyPath?.(t.id); break;
@@ -86,6 +156,12 @@
   // Hoisted out of the tab loop on purpose: `{#each tabs as t}` shadows the
   // svelte-i18n `t` store, so `$t(...)` inside the loop body resolves to the
   // loop variable, not the store. Deriving it here keeps locale reactivity.
+  const sizeLabels = $derived({
+    compact: { self: $t('terminal.size.compact.self'), other: $t('terminal.size.compact.other'), none: $t('terminal.size.compact.none') },
+    controls: $t('terminal.size.controls'), failed: $t('terminal.size.failed'),
+    full: { self: $t('terminal.size.self'), other: $t('terminal.size.other'), none: $t('terminal.size.none') },
+    short: { self: $t('terminal.size.short.self'), other: $t('terminal.size.short.other'), none: $t('terminal.size.short.none') },
+  });
   const closeLabel = $derived($t('tabs.ariaClose'));
 
   let strip = $state<HTMLElement | null>(null);
@@ -128,7 +204,10 @@
         class:closed={t.kind === "term" && t.closed}
         title={t.kind === "file" ? t.path : t.title}
         aria-current={t.id === activeId ? 'page' : undefined}
-        onclick={(e) => { if (e.detail === 0) onSelect(t.id); }}
+        aria-expanded={hasSize(t) ? openSizeId === t.id : undefined}
+        aria-haspopup={hasSize(t) ? 'dialog' : undefined}
+        aria-controls={openSizeId === t.id ? panelId : undefined}
+        onclick={(e) => { if (e.detail === 0) selectTab(t, e.currentTarget, true); }}
         onpointerdown={(e) => onTabDown(e, t)}
         onpointerup={(e) => onTabUp(e, t)}
         onpointercancel={onTabCancel}
@@ -136,9 +215,27 @@
         {#if t.kind === "term"}
           {#if t.shell}<span class="sh-glyph mono">❯</span>{:else}<span class="dot {stateDotClass(t.state)}"></span>{/if}
         {/if}
-        <span class="name">{t.title}</span>
+        <span class="tab-label">
+          <span class="name">{t.title}</span>
+          {#if hasSize(t) && t.id === activeId}
+            {@const s = sizeStates.get(t.id)!}
+            <span class="size-summary" title={sizeLabels.full[s.controller]} aria-label={sizeLabels.full[s.controller]}><span class="size-wide">{sizeLabels.short[s.controller]}</span><span class="size-compact">{sizeLabels.compact[s.controller]}</span></span>
+          {/if}
+        </span>
+        {#if hasSize(t)}
+          {@const s = sizeStates.get(t.id)!}
+          {#if s.blocked || sizeErrors.has(t.id)}<span class="size-error" role="status" aria-label={sizeLabels.failed} title={sizeLabels.failed}>!</span>{/if}
+          <span class="size-toggle" role="button" tabindex="0"
+            aria-label={`${sizeLabels.controls}: ${t.title}`}
+            aria-expanded={openSizeId === t.id} aria-haspopup="dialog" aria-controls={openSizeId === t.id ? panelId : undefined}
+            onpointerdown={(e) => { e.stopPropagation(); onTabCancel(); }}
+            onpointerup={(e) => e.stopPropagation()}
+            onclick={(e) => { e.stopPropagation(); void toggleSize(t, e.currentTarget, e.detail === 0); }}
+            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); void toggleSize(t, e.currentTarget, true); } }}
+          >{openSizeId === t.id ? '▴' : '▾'}</span>
+        {/if}
         {#if t.id === activeId}
-          <!-- 显式关闭钮：降低对三击手势的依赖，手势 FSM 原样保留。
+          <!-- 显式关闭钮：tmux 通过此入口关闭，Shell/文件另保留多击手势。
                stopPropagation 让它不进 stepTap，否则一次点击会既开确认框
                又被记成一次 tap。 -->
           <span class="x mono" role="button" tabindex="0" aria-label={closeLabel}
@@ -155,6 +252,12 @@
     <button class="add" aria-label={$t('tabs.ariaNew')} onclick={openAdd}>＋</button>
   </div>
 </div>
+
+{#if openSizeId && openSizeState && sizeAnchor}
+  <SizeControlPanel id={panelId} session={openSizeId} sizeState={openSizeState} anchor={sizeAnchor}
+    focusOnOpen={focusSizePanel} busy={sizeBusy.has(openSizeId)} error={sizeErrors.has(openSizeId)} {online}
+    onAction={sizeAction} onClose={closeSize} />
+{/if}
 
 {#if adding}
   <div class="overlay" role="presentation" onclick={() => (adding = false)}>
@@ -244,7 +347,20 @@
   .dot-wait { background: var(--amber); animation: pulse 1s infinite; }
   .dot-done { background: var(--dimmer); }
   @keyframes pulse { 50% { opacity: 0.35; } }
-  .name { min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+  .tab-label { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; max-width: 120px; }
+  .name { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .size-summary { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-ui, sans-serif); font-size: var(--ui-small, 12px); }
+  .size-toggle { flex: none; display: inline-flex; align-items: center; justify-content: center; align-self: stretch; min-width: 28px; }
+  .size-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .size-compact { display: none; }
+  @media (max-width: 480px) {
+    .tab { gap: 3px; padding-inline: 5px; }
+    .size-toggle { min-width: 24px; }
+    .x { width: 24px; margin-right: -3px; }
+    .size-wide { display: none; }
+    .size-compact { display: inline; }
+  }
+  .size-error { font-weight: bold; color: var(--red); }
   .add {
     flex: none; background: transparent; border: 0;
     color: var(--dim); width: var(--ui-touch, 44px); height: var(--ui-touch, 44px);

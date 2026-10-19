@@ -111,12 +111,17 @@ Switching to Layered or Flick shows a one-time animated tutorial. Replay it any 
 
 | Location | Gesture | What it does |
 |---|---|---|
-| Any top tab | Single tap | Select / switch to that tab (immediate, no latency) |
-| The same top tab | Double tap | Open that tab's close-confirmation dialog |
+| Inactive top tab | Single tap | Switch to the tab and dismiss size controls |
+| Active tmux tab | Single tap | Toggle the size-control panel; a short size status stays on the tab |
+| Arrow inside a tmux tab | Single tap | Select and open its size controls; tap again to dismiss |
+| `×` inside the active tab | Single tap | Open close confirmation; tmux tabs no longer close on double tap |
+| Shell / file tab | Double tap | Open that tab's close-confirmation dialog |
 | ↳ terminal tab | on confirm | Only closes the tab — the tmux session keeps running in the background and can be reopened from the task panel |
 | ↳ shell tab | on confirm | The shell session is closed and destroyed permanently |
 | ↳ file tab | on confirm | Closes the file preview tab (warns first if it has unsaved edits) |
 | Tab bar, right | `+` | New tmux session (prompts for a name) |
+
+The size panel shows the actual grid and offers release/takeover actions. Taking over transfers sizing from the other client. Released manual windows also offer confirmed restoration of the inherited policy. Click outside or press Esc to dismiss; a dismissal click over the terminal is consumed. Opening or closing the floating panel does not resize the terminal or change size ownership.
 
 ## 🎨 Themes and snippets
 

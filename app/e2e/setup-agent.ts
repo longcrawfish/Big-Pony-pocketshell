@@ -26,6 +26,8 @@ const cfg = loadConfig({
   POCKETSHELL_AUTHORIZED_KEYS: toB64(browserPub),
   POCKETSHELL_PORT: "0",
   POCKETSHELL_HOST: "127.0.0.1",
+  // A separately served test frontend must opt into its exact origin.
+  POCKETSHELL_ALLOWED_ORIGINS: process.env.PS_E2E_ORIGIN ?? "",
 });
 
 const srv = startServer({ port: 0, config: cfg });
