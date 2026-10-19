@@ -25,6 +25,7 @@ export default {
       body: "Tap ＋ top-right to open a tmux / shell window · double-tap a top tab to close it · or press Fn + n on the keyboard",
     },
     topAria: "Terminal and file preview",
+    instanceMenu: "Instance and app menu",
     instanceName: "Server instance: {name}",
     bottom: {
       expand: "Expand bottom area",

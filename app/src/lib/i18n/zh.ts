@@ -29,6 +29,7 @@ export default {
       body: "点右上角 ＋ 新建 tmux / shell 窗口 · 双击上方标签页关闭窗口 · 键盘 Fn + n 也能快捷新建",
     },
     topAria: "终端与文件预览",
+    instanceMenu: "实例与应用菜单",
     instanceName: "服务器实例：{name}",
     bottom: {
       expand: "展开底部区域",

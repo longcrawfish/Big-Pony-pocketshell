@@ -11,6 +11,7 @@
   import TerminalView from "./components/Terminal.svelte";
   import TermCopyOverlay from "./components/TermCopyOverlay.svelte";
   import TopTabs from "./components/TopTabs.svelte";
+  import InstanceMenu from "./components/InstanceMenu.svelte";
   import TaskPanel from "./components/TaskPanel.svelte";
   import FilePanel from "./components/FilePanel.svelte";
   import FilePreview from "./components/FilePreview.svelte";
@@ -28,7 +29,6 @@
   import type { CheckResult } from "./lib/update";
   import { shouldReloadAfterUpdate } from "./lib/update";
   import { hardReset } from "./lib/cache-admin";
-  import { brandPrefix } from "./lib/ui/instance-name";
   import { inputTarget } from "./lib/ui/input-target";
   import type { AppCommand } from "./lib/term/input-router";
   import { reset, type SelState } from "./lib/term/terminal-select";
@@ -282,7 +282,7 @@
     try { updInfo = (await conn.checkUpdate(force)) as CheckResult; } catch { /* silent */ }
   }
   // 实例身份：服务端配置的自由文本，连上后取一次显示在顶栏。未设时为 null，
-  // brandPrefix 返回空串 —— 顶栏与加此特性前完全一致。
+  // 完整实例名在菜单展示，栏内按可用宽度截断。
   let instanceName = $state<string | null>(null);
   async function loadAgentInfo() {
     try { instanceName = (await conn.agentInfo()).instanceName; }
@@ -1133,16 +1133,11 @@
 
 <div class="shell" class:bottom-collapsed={bottomCollapsed}>
   <div class="topbar">
-    <span class="brand mono" title={instanceName ? $t('app.instanceName', { values: { name: instanceName } }) : undefined}>{brandPrefix(instanceName)}pocket<b>shell</b></span>
-    <span class="version mono">v{updInfo?.current ?? ""}</span>
-    {#if updInfo?.hasUpdate}
-      <button class="upd-badge" onclick={() => (updOpen = true)} aria-label={$t('update.badge')} title={$t('update.badge')}><span class="upd-dot">●</span>{$t('update.badge')}</button>
-    {/if}
-    <!-- 连接状态收成纯色点：文字信息由分割条的延迟数字承担。色点本身不带
-         文字，所以 aria-label/title 必须保留 app.status.* 三条文案。 -->
-    <div class="conn conn-{status}" role="status" aria-label={$t('app.status.' + status)} title={$t('app.status.' + status)}>
-      <span class="conn-dot"></span>
-      {#if settings.eink}<span class="conn-label">{$t('app.status.' + status)}</span>{/if}
+    <InstanceMenu {instanceName} {status} version={updInfo?.current ?? ""}
+      hasUpdate={updInfo?.hasUpdate ?? false} eink={settings.eink}
+      fullscreen={pageFullscreen} onFullscreen={togglePageFullscreen} onUpdate={() => (updOpen = true)} />
+    <div class="tabs-wrap">
+      <TopTabs tabs={topTabsView} activeId={activeTopId} onSelect={selectTop} onNew={newSession} onCloseTab={closeTopTab} onCopyPath={copyTabPath} dirtyIds={fileDirty} />
     </div>
     <button class="fs-btn bottom-toggle" class:expanded={!bottomCollapsed}
       aria-label={bottomCollapsed ? $t('app.bottom.expand') : $t('app.bottom.collapse')}
@@ -1155,7 +1150,7 @@
         {:else}<path d="m9 13 3-3 3 3" />{/if}
       </svg>
     </button>
-    <button class="fs-btn" aria-label={pageFullscreen ? $t('app.fullscreen.exit') : $t('app.fullscreen.enter')} onclick={togglePageFullscreen}>
+    <button class="fs-btn desktop-fullscreen" aria-label={pageFullscreen ? $t('app.fullscreen.exit') : $t('app.fullscreen.enter')} onclick={togglePageFullscreen}>
       {#if pageFullscreen}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg>
       {:else}
@@ -1171,10 +1166,6 @@
       <a class="demo-cta" href="https://pocketshell.net/#quickstart" target="_blank" rel="noopener">{$t('demo.installCta')}</a>
     </div>
   {/if}
-
-  <div class="tabs-wrap">
-    <TopTabs tabs={topTabsView} activeId={activeTopId} onSelect={selectTop} onNew={newSession} onCloseTab={closeTopTab} onCopyPath={copyTabPath} dirtyIds={fileDirty} />
-  </div>
 
   {#if notice}<div class="notice">{notice}</div>{/if}
   {#if status !== "online"}
@@ -1315,13 +1306,14 @@
   }
 
   .topbar {
+    --topbar-height: max(48px, var(--ui-touch, 44px));
     display: flex;
     align-items: center;
-    gap: 8px;
-    height: 44px;
-    padding: 0 13px;
+    gap: 3px;
+    min-height: calc(var(--topbar-height) + var(--safe-top));
+    padding: var(--safe-top) max(4px, env(safe-area-inset-right)) 0 max(4px, env(safe-area-inset-left));
     background: transparent;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--tab-line);
     flex: 0 0 auto;
   }
   .demo-banner {
@@ -1354,88 +1346,13 @@
     margin-left: auto;
     flex: 0 0 auto;
   }
-  .brand {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-weight: 700;
-    letter-spacing: 0.2px;
-    font-size: 0.84rem;
-    color: var(--text);
-  }
-  .brand b { color: var(--brand-sig); font-weight: 700; }
-  .version {
-    min-width: 0;
-    max-width: 22%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 0.56rem;
-    color: var(--dimmer);
-    font-weight: 500;
-    letter-spacing: 0.06em;
-    margin-top: 2px;
-  }
-  .upd-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    color: var(--accent);
-    background: transparent;
-    border: 1px solid var(--accent);
-    border-radius: 999px;
-    cursor: pointer;
-    font-size: 11px;
-    line-height: 1;
-    padding: 2px 8px;
-  }
-  /* Keep the attention-drawing pulse on the dot only, so the "有新版本" text
-     stays steady and readable (req: the bare dot was too subtle). */
-  .upd-badge .upd-dot {
-    font-size: 12px;
-    animation: upd-pulse 2s infinite;
-  }
-  @keyframes upd-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.35; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .upd-badge .upd-dot { animation: none; }
-  }
-  /* 连接状态：纯色点，25px 命中区（与全屏钮同高） */
-  .conn {
-    margin-left: auto;
-    flex: 0 0 auto;
-    display: grid;
-    place-items: center;
-    width: 25px;
-    height: 25px;
-    color: var(--dim);
-  }
-  .conn-online { color: var(--ok); }
-  /* 连接中缓慢呼吸：状态点是"正在发生"而不是一个静止结论（14 期需求 5）。
-     reduced-motion 下由 app.css 统一关掉。 */
-  .conn-connecting {
-    color: var(--amber);
-    animation: conn-breathe 1.6s var(--ease-breathe, ease-in-out) infinite alternate;
-  }
-  @keyframes conn-breathe { from { opacity: 0.4; } to { opacity: 1; } }
-  .conn-offline { color: var(--red); }
-  .conn-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: currentColor;
-    box-shadow: 0 0 6px currentColor;
-  }
   .fs-btn {
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 27px;
-    height: 25px;
+    width: var(--ui-touch, 44px);
+    height: var(--ui-touch, 44px);
     padding: 0;
     background: transparent;
     border: 0;
@@ -1448,16 +1365,15 @@
   .fs-btn:hover { color: var(--text); }
   .fs-btn:active { background: var(--keyhi); }
   .bottom-toggle.expanded { color: var(--accent); background: var(--keyhi); }
-  .bottom-toggle { min-width: 32px; min-height: 32px; }
+  .fs-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .desktop-fullscreen { display: none; }
+  @media (min-width: 768px) { .desktop-fullscreen { display: inline-flex; } }
 
-  /* 索引卡片 tab 自带下边线与内边距，外层不再加 padding，否则卡片压不住线 */
   .tabs-wrap {
-    flex: 0 0 auto;
-    position: relative;
-    overflow: hidden;
-    background: transparent;
+    flex: 1;
+    min-width: 0;
     display: flex;
-    align-items: stretch;
+    align-self: stretch;
   }
   .banner {
     background: var(--banner-bg);
@@ -1549,7 +1465,5 @@
   }
   .toast.has-detail { white-space: normal; max-width: min(78vw, 320px); text-align: center; border-radius: var(--radius-lg); }
   .toast-detail { font-size: 0.66rem; color: var(--dim); margin-top: 4px; word-break: break-all; line-height: 1.5; }
-  .conn-label { font-size: var(--ui-small, 12px); color: var(--text); margin-left: 6px; white-space: nowrap; }
-  :global(:root[data-eink="true"]) .conn { display: flex; align-items: center; width: auto; height: auto; }
   :global(:root[data-eink="true"]) .fs-btn { min-width: 44px; min-height: 44px; }
 </style>

@@ -92,22 +92,30 @@
   // First scroll (e.g. a restored far-right active tab on mount) jumps instantly;
   // later scrolls animate.
   let firstScroll = true;
-  // When the active tab changes, scroll it flush-left so it's always visible.
+  // When the active tab or available width changes, keep the active tab visible.
   // Ordering is NOT changed — this is scroll-only (requirement 6).
   $effect(() => {
     const id = activeId; // track
+    const count = tabs.length; // new/restored tabs may change available scroll range
     if (!strip) return;
-    const el = strip.querySelector<HTMLElement>(".tab.active");
-    if (el) {
+    const scrollActive = (animate: boolean) => {
+      const el = strip?.querySelector<HTMLElement>(".tab.active");
+      if (!strip || !el) return;
       // Use bounding-rect deltas rather than el.offsetLeft: offsetLeft is
       // relative to the offsetParent (.tabs-wrap, position:relative in
       // App.svelte), not to .strip itself, so it includes that ancestor's
       // padding and overshoots the scroll. Rect deltas are relative to the
       // viewport, so they're correct regardless of offsetParent/CSS position.
       const delta = el.getBoundingClientRect().left - strip.getBoundingClientRect().left;
-      strip.scrollTo({ left: strip.scrollLeft + delta, behavior: firstScroll ? "auto" : "smooth" });
+      const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      const eink = document.documentElement.dataset.eink === 'true';
+      strip.scrollTo({ left: strip.scrollLeft + delta, behavior: animate && !firstScroll && !reduceMotion && !eink ? "smooth" : "instant" });
       firstScroll = false;
-    }
+    };
+    scrollActive(true);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => scrollActive(false));
+    observer?.observe(strip);
+    return () => observer?.disconnect();
   });
 </script>
 
@@ -118,6 +126,9 @@
         class="tab"
         class:active={t.id === activeId}
         class:closed={t.kind === "term" && t.closed}
+        title={t.kind === "file" ? t.path : t.title}
+        aria-current={t.id === activeId ? 'page' : undefined}
+        onclick={(e) => { if (e.detail === 0) onSelect(t.id); }}
         onpointerdown={(e) => onTabDown(e, t)}
         onpointerup={(e) => onTabUp(e, t)}
         onpointercancel={onTabCancel}
@@ -133,7 +144,8 @@
           <span class="x mono" role="button" tabindex="0" aria-label={closeLabel}
             onpointerdown={(e) => e.stopPropagation()}
             onpointerup={(e) => { e.stopPropagation(); onTabCancel(); openClose(t, e.timeStamp); }}
-            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openClose(t, e.timeStamp); } }}
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onTabCancel(); openClose(t, e.timeStamp); } }}
           >×</span>
         {/if}
       </button>
@@ -185,31 +197,24 @@
 {/if}
 
 <style>
-  /* flex:1 + min-width:0 so this fills .tabs-wrap and lets .strip actually
-     overflow-scroll; without it the content width pushes .ops (the +) past the
-     parent's overflow:hidden edge and off-screen. */
-  /* 索引卡片式 tab：卡片底边压在 .toptabs 的下边线上，激活态与终端底同色，
-     视觉上「卡片连着终端」。align-items:flex-end 让卡片贴着这条线长上去。 */
+  /* Only the strip scrolls; the new-session button remains next to the
+     bottom-region toggle in the shared topbar. */
   .toptabs {
-    display: flex; align-items: flex-end; gap: 3px;
-    background: transparent; padding: 5px 10px 0;
-    border-bottom: 1px solid var(--tab-line);
+    display: flex; align-items: center; gap: 3px;
+    background: transparent;
     flex: 1; min-width: 0; width: 100%;
   }
-  /* margin-bottom:-1px 让 strip 自身向下盖住 .toptabs 的下边线，卡片贴着
-     strip 底边（align-items:flex-end）因而正好压在线上，与终端连成一体。
-     不能改用卡片 `position:relative; top:1px` 下移——strip 有 overflow-x:auto，
-     溢出的那 1px 会被裁掉，分隔线反而横穿卡片。 */
   .strip {
     display: flex; align-items: flex-end; gap: 3px; flex: 1; min-width: 0;
     overflow-x: auto; scrollbar-width: none; scroll-snap-type: x mandatory;
-    margin-bottom: -1px;
+    align-self: stretch;
   }
   .strip::-webkit-scrollbar { display: none; }
   .ops { flex: 0 0 auto; }
   .tab {
-    flex: none; display: flex; align-items: center; gap: 7px;
-    padding: 6px 13px 7px; border: 1px solid transparent; border-bottom: none;
+    flex: none; display: flex; align-items: center; gap: 5px;
+    max-width: 100%; min-width: 0; min-height: var(--ui-touch, 44px);
+    padding: 0 8px; border: 1px solid transparent; border-bottom: none;
     border-radius: 6px 6px 0 0; background: var(--tab-bg); color: var(--dim);
     font-size: var(--ui-small, 0.72rem); white-space: nowrap; scroll-snap-align: start;
     position: relative;
@@ -230,22 +235,24 @@
   .tab.closed { opacity: 0.7; }
   .x {
     color: var(--dim); font-size: var(--ui-text, 0.85rem); line-height: 1;
-    margin: -2px -6px -2px 0; padding: 3px 5px;
+    flex: none; display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; align-self: stretch; margin-right: -6px;
   }
   .x:active { color: var(--text); }
-  .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .dot { width: 6px; height: 6px; flex: none; border-radius: 50%; }
   .dot-run { background: var(--ok); box-shadow: 0 0 5px var(--ok); animation: pulse 1.4s infinite; }
   .dot-wait { background: var(--amber); animation: pulse 1s infinite; }
   .dot-done { background: var(--dimmer); }
   @keyframes pulse { 50% { opacity: 0.35; } }
-  .name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+  .name { min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
   .add {
     flex: none; background: transparent; border: 0;
-    color: var(--dim); width: 30px; height: 30px;
-    padding: 0 0 6px; font-size: var(--ui-text, 1rem); line-height: 1;
+    color: var(--dim); width: var(--ui-touch, 44px); height: var(--ui-touch, 44px);
+    padding: 0; font-size: var(--ui-text, 1rem); line-height: 1;
     font-family: var(--font-mono);
   }
   .add:active { color: var(--text); }
+  .tab:focus-visible, .add:focus-visible, .x:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
   .overlay { position: fixed; inset: 0; z-index: 40; background: var(--overlay-bg); display: flex; justify-content: center; align-items: flex-start; }
   .overlay .dlg { margin-top: 14vh; }
