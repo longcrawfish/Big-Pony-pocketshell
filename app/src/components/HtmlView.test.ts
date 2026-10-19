@@ -8,7 +8,7 @@ describe("HtmlView", () => {
     const f = container.querySelector("iframe")!;
     expect(f.getAttribute("src")).toBe("http://agent/preview/T/index.html");
     const sb = f.getAttribute("sandbox") ?? "";
-    expect(sb).toContain("allow-scripts");
+    expect(sb).not.toContain("allow-scripts");
     expect(sb).not.toContain("allow-same-origin");
   });
 });
@@ -53,7 +53,7 @@ describe("HtmlView 宽度与缩放", () => {
       props: { src: "https://x/y.html", widthPx: 1280, scale: 0.3 },
     });
     const f = container.querySelector("iframe") as HTMLIFrameElement;
-    expect(f.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(f.getAttribute("sandbox")).toBe("");
   });
   it("iframe 高度抵消缩放，可视区仍铺满容器", () => {
     const { container } = render(HtmlView, {

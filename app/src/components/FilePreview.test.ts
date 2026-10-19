@@ -14,6 +14,17 @@ function connStub(overrides: Record<string, any> = {}) {
 }
 
 describe("FilePreview image", () => {
+  it("revokes a late token if the preview closed during the mint request", async () => {
+    let resolveMint!: (r: any) => void;
+    const conn = connStub({ rpc: vi.fn((m: string) => m === "preview.mint"
+      ? new Promise(r => { resolveMint = r; }) : Promise.resolve({})) });
+    const { unmount } = render(FilePreview, { props: {
+      conn, path: "/proj/a.png", mode: "code", active: true, base: "/proj", onToast: () => {},
+    } });
+    await waitFor(() => expect(resolveMint).toBeTypeOf("function"));
+    unmount(); resolveMint({ token: "late" });
+    await waitFor(() => expect(conn.rpc).toHaveBeenCalledWith("preview.revoke", { token: "late" }));
+  });
   it("renders an <img> pointing at the /preview token route", async () => {
     const conn = connStub();
     const { container } = render(FilePreview, {

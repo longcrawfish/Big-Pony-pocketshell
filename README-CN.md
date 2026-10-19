@@ -96,7 +96,7 @@ PocketShell 是一个**面向移动端的自托管远程终端**。它把开发�
 
 - **文件树**：懒加载目录树，行内显示 git 状态标记（`M`/`A`/`D`/`?`）
 - **代码编辑**：CodeMirror 6，行号、查找替换、原生输入法、自动折行，分块保存 + 基于 mtime 的防误覆盖
-- **文件预览**：图片 / Markdown 渲染 / 视频（支持拖动进度条）/ 静态 HTML（sandbox iframe，可跑 JS 与相对资源）
+- **文件预览**：图片 / Markdown 渲染 / 视频（支持拖动进度条）/ 静态 HTML（sandbox iframe，默认禁用脚本、显式资源清单授权）
 - **Git 面板**：工作区 diff 可视化，只读 log / 分支 / status，分支行一键刷新
 - **上传下载**：多文件带进度、目录打包 zip、分块传输，弱网下按排队字节动态放宽超时
 
@@ -241,7 +241,7 @@ Agent 默认监听 **`8722` 端口**，启动后在运行 Agent 的机器上打�
 | `POCKETSHELL_ADVERTISE` | — | 写进配对串的对外地址 |
 | `POCKETSHELL_KEY_DIR` | `~/.pocketshell` | 密钥 / 设备 / 审计目录 |
 | `POCKETSHELL_TLS` / `_CERT` / `_KEY` | `0` | Agent 内置 TLS（手供证书） |
-| `POCKETSHELL_UPDATE_REPO` | `Big-Pony/pocketshell` | 检查更新的 Release 来源 |
+| `POCKETSHELL_UPDATE_REPO` | `longcrawfish/Big-Pony-pocketshell` | 检查更新的 Release 来源 |
 | `POCKETSHELL_INSTANCE_NAME` | — | 实例名，装多台时用来区分 |
 
 **装多台服务器**：在多台机器上各装一个 Agent 天然支持，它们互不知晓、各自独立（各自的密钥、会话、推送订阅）。给每台设一个 `POCKETSHELL_INSTANCE_NAME`，名字会出现在手机桌面图标下、PWA 应用名和 App 顶栏，于是你得到两个能一眼分清的独立 PWA，**两台的通知都能收到、互不顶替**。详见[部署指南](./DEPLOYMENT-CN.md)。
@@ -250,7 +250,7 @@ Agent 默认监听 **`8722` 端口**，启动后在运行 Agent 的机器上打�
 
 ## 🔒 安全
 
-每次连接做 Noise IK 握手，双向身份认证 + 前向保密，未登记设备握手就过不了；穿透/反代链路只是传输密文，解不开明文。加密密钥仅存于 `KEY_DIR`，从不入库。
+Noise IK 认证设备并加密终端/RPC 帧；网页交付和预览隐私仍需要 HTTPS。Agent 密钥在 `KEY_DIR`，浏览器设备密钥仍保存在 localStorage。配对设备拥有 Agent 用户的系统权限，项目书签不构成隔离。详见[安全设置与升级迁移](./DEPLOYMENT-CN.md#安全设置与升级迁移)。
 
 **认证边界即安全边界**——过握手 + 配对的设备可浏览 Agent 进程权限内的文件（不做额外沙箱），请以进程权限约束访问面。生产环境建议把 TLS 交给边缘（Cloudflare / Caddy）终结。
 
@@ -293,9 +293,9 @@ Agent（Claude Code / Codex / opencode / Kimi CLI）完成一轮任务或等待�
 
 ## 🔄 自动更新
 
-Agent 内置基于 GitHub Releases 的应用内自动更新：启动时和手机每次连接时静默检查（结果缓存 6 小时，失败不影响使用）。有新版本时顶栏出现更新徽标，点「更新」即自动完成下载 → 校验 SHA256 →（macOS）重签名 → 替换二进制 → 重启，全程无需手动操作。
+OTA 默认关闭，设置 `POCKETSHELL_UPDATE=1` 才开启版本检查；实际安装还要求 Agent 编入经审核的 Ed25519 公钥。签名清单绑定仓库、递增版本、平台、压缩包大小与 SHA256。当前信任库为空，因此 OTA 安装保持关闭。
 
-- `POCKETSHELL_UPDATE=0` 可关闭；`POCKETSHELL_UPDATE_REPO` 可指向自己 fork 的仓库（此时只检查、不自动替换二进制）。
+- `POCKETSHELL_UPDATE` 未设置或设为 `0` 均关闭；`POCKETSHELL_UPDATE_REPO` 可指向自己 fork 的仓库（此时只检查、不自动替换二进制）。
 - 自重启依赖进程被 systemd / launchd 托管；macOS 上首次授予的 Full Disk Access 在 OTA 后不会丢失。详见 [部署指南 § 自动更新（OTA）](./DEPLOYMENT-CN.md#自动更新ota)。
 
 ## 🛠 技术栈

@@ -3,6 +3,14 @@ import { render, fireEvent } from "@testing-library/svelte";
 import UpdateDialog from "./UpdateDialog.svelte";
 
 describe("UpdateDialog", () => {
+  it("does not offer installation when the deployment requires a manual update", () => {
+    const { queryByRole, getByText } = render(UpdateDialog, { props: {
+      info: { current: "0.3.0", latest: "0.4.0", hasUpdate: true, notes: "", publishedAt: null, canApply: false },
+      onConfirm: vi.fn(), onCancel: vi.fn(),
+    } });
+    expect(queryByRole("button", { name: "更新" })).toBeNull();
+    expect(getByText("当前部署需要由维护者手动更新。")).toBeTruthy();
+  });
   it("shows versions and fires onConfirm/onCancel", async () => {
     const onConfirm = vi.fn(), onCancel = vi.fn();
     const { getByText } = render(UpdateDialog, {

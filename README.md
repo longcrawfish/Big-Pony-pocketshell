@@ -96,7 +96,7 @@ One binary = the whole product: the frontend is embedded and served on the same 
 
 - **File tree** — lazy-loaded directory tree with inline git status markers (`M`/`A`/`D`/`?`)
 - **Code editing** — CodeMirror 6 with line numbers, find/replace, native IME and line wrapping; chunked save with an mtime-based overwrite guard
-- **File preview** — images / rendered Markdown / video (with a working seek bar) / static HTML (sandboxed iframe that runs JS and relative assets)
+- **File preview** — images / rendered Markdown / video (with a working seek bar) / static HTML (sandboxed iframe with scripts disabled by default and an explicit resource list)
 - **Git panel** — working-tree diff, read-only log / branches / status, one-tap branch refresh
 - **Upload & download** — multi-file with progress, dir-as-zip, chunked transfer; the RPC deadline scales with queued bytes so slow links don't time out
 
@@ -242,7 +242,7 @@ Precedence: env > `<keyDir>/agent.json` > default (see `agent/src/config.ts`).
 | `POCKETSHELL_ADVERTISE` | — | external address baked into the pairing string |
 | `POCKETSHELL_KEY_DIR` | `~/.pocketshell` | keys / devices / audit dir |
 | `POCKETSHELL_TLS` / `_CERT` / `_KEY` | `0` | Agent built-in TLS (bring your own cert) |
-| `POCKETSHELL_UPDATE_REPO` | `Big-Pony/pocketshell` | release source for update checks |
+| `POCKETSHELL_UPDATE_REPO` | `longcrawfish/Big-Pony-pocketshell` | release source for update checks |
 | `POCKETSHELL_INSTANCE_NAME` | — | instance label, used to tell multiple installs apart |
 
 **Running more than one server**: installing an Agent on several machines works out of the box — they know nothing about each other and share nothing (separate keys, sessions, push subscriptions). Give each one a `POCKETSHELL_INSTANCE_NAME` and it shows up under the home-screen icon, in the PWA's app name and in the app's top bar, so you get two independent PWAs you can tell apart at a glance — and **notifications from both servers reach you, neither displacing the other**. See the [deployment guide](./DEPLOYMENT.md).
@@ -251,7 +251,7 @@ Precedence: env > `<keyDir>/agent.json` > default (see `agent/src/config.ts`).
 
 ## 🔒 Security
 
-Every connection performs a Noise IK handshake with mutual authentication and forward secrecy; an unregistered device never gets past the handshake, and any tunnel/proxy in between only carries ciphertext. Crypto keys live only in `KEY_DIR` and are never committed.
+Noise IK authenticates devices and encrypts terminal/RPC frames. HTTPS is still required for trusted page delivery and private previews. Agent keys live in `KEY_DIR`; browser device keys remain in localStorage. Paired devices have the Agent user’s full OS privileges; project bookmarks are not a security sandbox. See the [security and migration settings](./DEPLOYMENT.md#security-settings-and-upgrade-migration).
 
 **The auth boundary is the security boundary** — a paired device can browse files within the Agent process's own permissions (no extra sandbox), so constrain access via process permissions. In production, terminate TLS at the edge (Cloudflare / Caddy).
 
@@ -294,9 +294,9 @@ The guide also includes systemd / launchd service examples and a troubleshooting
 
 ## 🔄 Auto-update
 
-The Agent has built-in in-app auto-update backed by GitHub Releases: it silently checks on startup and each time a phone connects (result cached 6h; a failed check never breaks normal use). When a newer version exists, an update badge appears in the top bar; tap "Update" and download → SHA256 verification → (on macOS) re-signing → binary swap → restart all happen automatically.
+OTA is disabled by default. Opting in with `POCKETSHELL_UPDATE=1` enables version checks; applying an update also requires a reviewed Ed25519 public key compiled into the Agent. Signed manifests bind repository, newer version, platform, archive size and SHA256. The current trust store is empty, so OTA installation remains disabled.
 
-- Set `POCKETSHELL_UPDATE=0` to disable it; `POCKETSHELL_UPDATE_REPO` can point at your own fork (checks still run, but the binary is no longer replaced automatically).
+- Leave `POCKETSHELL_UPDATE` unset or set it to `0` to disable it; `POCKETSHELL_UPDATE_REPO` can point at your own fork (checks still run, but the binary is no longer replaced automatically).
 - The self-restart relies on the process being supervisor-managed (systemd / launchd); on macOS, a Full Disk Access grant made before an update survives OTA. Details in [deployment guide § Auto-update (OTA)](./DEPLOYMENT.md#auto-update-ota).
 
 ## 🛠 Tech stack

@@ -27,9 +27,9 @@ test("all five flags parse", () => {
     "--name", "开发",
     "--user", "myt",
     "--host", "0.0.0.0",
-    "--port", "9001",
+    "--port", "9001", "--allow-insecure-http",
   ]);
-  expect(o).toEqual({ advertise: "ws://192.168.1.10:8722", name: "开发", user: "myt", host: "0.0.0.0", port: 9001 });
+  expect(o).toEqual({ advertise: "ws://192.168.1.10:8722", name: "开发", user: "myt", host: "0.0.0.0", port: 9001, allowInsecureHttp: true });
 });
 
 test("uninstall takes no flags", () => {
@@ -47,7 +47,7 @@ test("--advertise must be ws:// or wss://, not https://", () => {
   // string the phone cannot connect to.
   expect(err(["install", "--advertise", "https://x.com"])).toContain("ws://");
   expect(err(["install", "--advertise", "x.com"])).toContain("ws://");
-  expect(ok(["install", "--advertise", "ws://x.com"]).advertise).toBe("ws://x.com");
+  expect(err(["install", "--advertise", "ws://x.com"])).toContain("--allow-insecure-http");
 });
 
 test("port must be an integer in 1..65535", () => {
@@ -143,8 +143,9 @@ test("linux: --user overrides SUDO_USER", () => {
   expect(plan({ env: { SUDO_USER: "myt" }, opts: { ...OPTS, user: "alice" } }).user).toBe("alice");
 });
 
-test("linux: direct root login (no SUDO_USER) falls back to root", () => {
-  const p = plan({ env: {} });
+test("linux: root login requires an explicit root service opt-in", () => {
+  expect(planErr({ env: {} })).toContain("non-root");
+  const p = plan({ env: {}, opts: { ...OPTS, user: "root", allowRoot: true } });
   expect(p.user).toBe("root");
   expect(p.keyDir).toBe("/root/.pocketshell");
 });
@@ -227,6 +228,7 @@ Environment=POCKETSHELL_KEY_DIR=/home/myt/.pocketshell
 Environment=POCKETSHELL_INSTANCE_NAME=开发
 Restart=always
 RestartSec=3
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target

@@ -1,33 +1,41 @@
 // Pure HTTP handler for /preview/<token>/<relpath>. Kept out of server.ts so
 // the routing/hardening decisions are unit-testable without spinning a server.
-import { statSync } from "node:fs";
+import { fstatSync, readSync, closeSync } from "node:fs";
+import { openPreviewFile } from "./preview-open";
 import { PreviewTokens, contentTypeFor, parseRange } from "./preview-service";
 
-// Hardening headers applied to EVERY success response (200 and 206 alike).
-// Defence-in-depth: the route is same-origin as the app and can serve
-// executable HTML. `sandbox allow-scripts` forces even a top-level load into
-// an opaque origin (cannot read the app's identity keys), and nosniff stops
-// MIME-sniffing octet-stream bodies into HTML. The iframe's own sandbox attr
-// is the first layer; this makes it not the ONLY layer.
-//
-// VULN-003: `access-control-allow-origin: *` used to sit here, which let any
-// site read a preview response if it ever learned a token. It is gone. Nothing
-// needs it — the app loads previews through <img src> / <video src> and an
-// <iframe>, none of which require CORS; the app is same-origin with the agent
-// anyway. Dropping the header costs no functionality and takes cross-origin
-// *reads* off the table even when a token leaks.
-//
-// The token itself stays in the URL path. The audit suggested moving it to an
-// Authorization header, but media elements cannot send one — that would mean
-// fetching every preview into a blob, which breaks HTTP range requests and so
-// breaks video seeking. `no-referrer` + `no-store` + a 30-minute TTL remain the
-// mitigations for the URL-borne token.
-const HARDENING = {
-  "referrer-policy": "no-referrer",
-  "cache-control": "no-store",
-  "content-security-policy": "sandbox allow-scripts",
-  "x-content-type-options": "nosniff",
-} as const;
+// Sandbox applies even on top-level loads. Resource requests remain limited
+// by the server-side manifest, regardless of what scripts or CSP can do.
+export function previewHeaders(scripts = false): Record<string, string> {
+  return {
+    "referrer-policy": "no-referrer", "cache-control": "no-store",
+    "content-security-policy": `sandbox${scripts ? " allow-scripts" : ""}; default-src 'none'; script-src ${scripts ? "'self' 'unsafe-inline'" : "'none'"}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; media-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`,
+    "x-content-type-options": "nosniff",
+  };
+}
+
+// Streaming from the already-authorized descriptor avoids reopening a path.
+// Cancellation, EOF, errors and a bounded stalled-response lifetime close it.
+function fileStream(fd: number, start: number, end: number): ReadableStream<Uint8Array> {
+  let position = start, closed = false;
+  const close = () => { if (!closed) { closed = true; closeSync(fd); } clearTimeout(timer); };
+  const timer = setTimeout(close, 120_000);
+  timer.unref();
+  return new ReadableStream({
+    pull(controller) {
+      try {
+        if (closed) throw new Error("preview stream expired");
+        if (position > end) { close(); controller.close(); return; }
+        const buf = new Uint8Array(Math.min(64 * 1024, end - position + 1));
+        const n = readSync(fd, buf, 0, buf.length, position);
+        if (!n) { close(); controller.close(); return; }
+        position += n; controller.enqueue(buf.subarray(0, n));
+        if (position > end) { close(); controller.close(); }
+      } catch (e) { close(); controller.error(e); }
+    },
+    cancel() { close(); },
+  });
+}
 
 export function buildPreviewResponse(
   pt: PreviewTokens,
@@ -46,25 +54,15 @@ export function buildPreviewResponse(
   const abs = pt.resolve(token, relpath, now);
   if (!abs) return new Response("forbidden", { status: 403 });
 
-  let size: number;
-  try {
-    const st = statSync(abs);
-    // 目录必须显式挡掉：statSync 对目录是成功的（size 是 inode 大小），
-    // 放过去会给出 200 + 一个读取时才抛 "Directories cannot be read like
-    // files" 的 body。改用 statSync/Bun.file 之前，readFileSync(dir) 抛
-    // EISDIR 被下面的 catch 兜成 404 —— 这条判断把那个行为找回来。
-    if (st.isDirectory()) return new Response("not found", { status: 404 });
-    size = st.size;
-  } catch { return new Response("not found", { status: 404 }); }
-
+  const HARDENING = previewHeaders(pt.scripts(token));
+  let size: number, fd: number;
+  try { fd = openPreviewFile(abs); size = fstatSync(fd).size; }
+  catch { return new Response("not found", { status: 404, headers: HARDENING }); }
   const ct = contentTypeFor(abs);
-  // Bun.file() is lazy: the body streams from disk instead of being read into
-  // memory. Matters for video (hundreds of MB) and fixes the pre-existing
-  // whole-file-in-RAM behaviour for large images too.
-  const file = Bun.file(abs);
   const range = parseRange(rangeHeader ?? null, size);
 
   if (range === "unsatisfiable") {
+    closeSync(fd);
     return new Response("range not satisfiable", {
       status: 416,
       headers: { ...HARDENING, "content-range": `bytes */${size}` },
@@ -73,7 +71,7 @@ export function buildPreviewResponse(
 
   if (range) {
     const { start, end } = range;
-    return new Response(file.slice(start, end + 1), {   // slice end is exclusive
+    return new Response(fileStream(fd, start, end), {   // slice end is exclusive
       status: 206,
       headers: {
         ...HARDENING,
@@ -87,7 +85,7 @@ export function buildPreviewResponse(
 
   // accept-ranges advertises seek support so the browser knows it MAY send a
   // Range request for this resource (video controls depend on seeing it).
-  return new Response(file, {
+  return new Response(fileStream(fd, 0, size - 1), {
     status: 200,
     headers: {
       ...HARDENING,

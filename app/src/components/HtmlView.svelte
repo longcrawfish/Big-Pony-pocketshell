@@ -1,6 +1,6 @@
 <script lang="ts">
-  let { src, widthPx = 390, scale = 1 }: {
-    src: string;
+  let { src, widthPx = 390, scale = 1, allowScripts = false }: {
+    src: string; allowScripts?: boolean;
     /** iframe 的布局宽度。桌面站据此走桌面响应式分支（14 期需求 1）。 */
     widthPx?: number;
     /** 视觉缩放比，由父组件用 scaleFor(widthPx, 可用宽) 算出。恒 ≤ 1。 */
@@ -26,7 +26,7 @@
     class="html-frame"
     title="preview"
     {src}
-    sandbox="allow-scripts"
+    sandbox={allowScripts ? "allow-scripts" : ""}
     style:width="{widthPx}px"
     style:height="{frameH}%"
     style:transform="scale({scale})"

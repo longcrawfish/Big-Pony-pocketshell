@@ -17,7 +17,7 @@
   let hostEl = $state<HTMLDivElement>();
 
   // html:false blocks raw HTML tags entirely; DOMPurify is the second layer.
-  const md = new MarkdownIt({ html: false, linkify: true, breaks: false });
+  const md = new MarkdownIt({ html: false, linkify: false, breaks: false });
 
   // The preview is rendered inline in the App's own page — without target/rel a
   // link tap would navigate the whole PWA away. Force external links to a new
@@ -51,6 +51,7 @@
     const src = source; // track the prop
     (async () => {
       try {
+        if (src.length > 128 * 1024 || src.split("\n").length > 3000) { onFail(); return; }
         const dirty = md.render(src);
         html = DOMPurify.sanitize(dirty, { ADD_ATTR: ["target", "rel"] });
       } catch { onFail(); return; }

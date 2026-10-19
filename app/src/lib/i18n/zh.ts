@@ -625,6 +625,12 @@ curl -fsSL https://pocketshell.net/install.sh | sh
     },
   },
   preview: {
+    assets: "允许预览的资源（每行一个相对路径）",
+    applyAssets: "应用资源清单",
+    enableScripts: "启用交互脚本",
+    disableScripts: "禁用脚本",
+    scriptsConfirm: "仅对可信页面启用。页面脚本可能转发清单中的文件内容；请确认清单不含私人数据。",
+
     noChanges: "无改动",
     diffFailed: "diff 失败",
     binary: "二进制文件，不预览",
@@ -656,6 +662,7 @@ curl -fsSL https://pocketshell.net/install.sh | sh
     },
   },
   update: {
+    manualRequired: '当前部署需要由维护者手动更新。',
     badge: "有新版本",
     title: "发现新版本",
     current: "当前版本",

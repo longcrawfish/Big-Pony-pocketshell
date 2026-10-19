@@ -15,7 +15,7 @@ function fixture(): string {
 test("mint + resolve serves files inside base", () => {
   const dir = fixture();
   const pt = new PreviewTokens({ gen: (() => { let n = 0; return () => `t${n++}`; })() });
-  const tok = pt.mint(dir, "devA", 1000);
+  const tok = pt.mint(dir, "devA", 1000, { files: ["a.png", "sub/b.css"] });
   expect(tok).toBe("t0");
   expect(pt.resolve(tok, "a.png", 1000)).toBe(join(dir, "a.png"));
   expect(pt.resolve(tok, "sub/b.css", 1000)).toBe(join(dir, "sub", "b.css"));
@@ -24,7 +24,7 @@ test("mint + resolve serves files inside base", () => {
 test("resolve rejects path traversal out of base", () => {
   const dir = fixture();
   const pt = new PreviewTokens();
-  const tok = pt.mint(dir, "devA", 0);
+  const tok = pt.mint(dir, "devA", 0, { files: ["a.png", "sub/b.css"] });
   expect(pt.resolve(tok, "../etc/passwd", 0)).toBeNull();
   expect(pt.resolve(tok, "sub/../../x", 0)).toBeNull();
 });
@@ -37,7 +37,7 @@ test("unknown token resolves null", () => {
 test("idle expiry (sliding) then null", () => {
   const dir = fixture();
   const pt = new PreviewTokens({ idleMs: 100 });
-  const tok = pt.mint(dir, "devA", 0);
+  const tok = pt.mint(dir, "devA", 0, { files: ["a.png", "sub/b.css"] });
   expect(pt.resolve(tok, "a.png", 90)).toBe(join(dir, "a.png")); // refreshes lastUsed=90
   expect(pt.resolve(tok, "a.png", 180)).toBe(join(dir, "a.png")); // within 90+100
   expect(pt.resolve(tok, "a.png", 400)).toBeNull();               // idle > 100
@@ -46,8 +46,8 @@ test("idle expiry (sliding) then null", () => {
 test("revokeDevice drops that device's tokens only", () => {
   const dir = fixture();
   const pt = new PreviewTokens();
-  const a = pt.mint(dir, "devA", 0);
-  const b = pt.mint(dir, "devB", 0);
+  const a = pt.mint(dir, "devA", 0, { files: ["a.png", "sub/b.css"] });
+  const b = pt.mint(dir, "devB", 0, { files: ["a.png", "sub/b.css"] });
   pt.revokeDevice("devA");
   expect(pt.resolve(a, "a.png", 0)).toBeNull();
   expect(pt.resolve(b, "a.png", 0)).toBe(join(dir, "a.png"));

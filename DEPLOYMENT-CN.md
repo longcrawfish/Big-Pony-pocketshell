@@ -8,7 +8,7 @@
 
 | 方式 | 适用场景 | 需要 |
 |---|---|---|
-| [A. 纯 IP + 端口](#方式-a纯-ip--端口无域名) | 局域网，或有公网 IP 但没有域名 | 无 |
+| [A. 纯 IP + 端口](#方式-a纯-ip--端口无域名) | 仅隔离的开发网络 | 显式允许明文 |
 | [B. 服务器直接部署 + 域名](#方式-b服务器直接部署--域名caddy--nginx) | Agent 跑在有公网 IP 的服务器上，有域名 | Caddy 或 Nginx |
 | [C. Cloudflare Tunnel](#方式-ccloudflare-tunnel无公网-ip) | 家里/内网机器，无公网 IP | Cloudflare 账号 + 域名 |
 | [D. frp 中转服务器](#方式-dfrp-中转服务器无公网-ip自控链路) | 无公网 IP，但有一台 VPS，想完全自控链路 | VPS + 域名 |
@@ -23,7 +23,7 @@
 
 **2. 对外地址（`POCKETSHELL_ADVERTISE`）。** 首次运行打印的**配对串**里嵌着「手机应该连哪里」，这个地址由 `POCKETSHELL_ADVERTISE` 决定，格式是 WebSocket URL：直连写 `ws://<IP>:8722`，走 HTTPS 反代写 `wss://your.domain`。不设置时默认取 `ws://<HOST>:<PORT>`，绑定 `127.0.0.1` 或 `0.0.0.0` 时手机都连不上——**所有部署方式都应显式设置它**。
 
-**3. 加密与 TLS 的关系。** PocketShell 自带端到端加密（每次连接做 Noise IK 握手，双向身份认证 + 前向保密）：终端内容在 WebSocket 帧内就是密文，**即使走明文 `http://` + `ws://` 链路，中间人也解不开、也冒充不了**。TLS/HTTPS 带来的是浏览器侧的额外好处：地址栏不告警、剪贴板等 API 不受限、可安装 PWA。因此纯 IP 直连（方式 A）是安全的，但体验最完整的是 HTTPS（方式 B/C/D）。
+**3. 加密与 TLS 保护不同的边界。** Noise IK 认证设备并加密终端/RPC 流量，但不保护浏览器应用的下载：HTTP 链路上的主动攻击者可以替换 JavaScript，窃取设备密钥或命令；预览 HTTP 响应也不经过 Noise。远程访问应使用可信证书的 HTTPS/WSS；明文访问仅作为显式开启的开发例外。
 
 > 配对提示：配对码 TTL 300 秒且仅在进程启动时生成一次。Agent 长期常驻后要加新手机，不用重启——在 Agent 所在机器执行 `pocketshell-agent pair` 生成新配对串即可。
 
@@ -31,10 +31,10 @@
 
 ### 方式 A：纯 IP + 端口（无域名）
 
-最简单：手机和 Agent 在同一局域网，或 Agent 所在机器有公网 IP。
+仅用于你控制的隔离开发网络；不要把明文 HTTP 暴露到公网。
 
 ```bash
-POCKETSHELL_HOST=0.0.0.0 \
+POCKETSHELL_HOST=0.0.0.0 POCKETSHELL_ALLOW_INSECURE_HTTP=1 \
 POCKETSHELL_ADVERTISE=ws://192.168.1.10:8722 \
 ./pocketshell-agent
 ```
@@ -43,7 +43,7 @@ POCKETSHELL_ADVERTISE=ws://192.168.1.10:8722 \
 
 注意事项：
 
-- 终端内容有 Noise 端到端加密，明文链路不泄密（见上文概念 3）；但 `http://` 源下浏览器会限制部分 API（剪贴板可能要手动授权、无法安装 PWA）。
+- 上述开关表示接受页面被主动中间人替换、预览内容明文传输的风险。HTTP 还会限制剪贴板和 PWA 等浏览器功能。
 - **公网 IP 直挂时建议收紧访问面**：用防火墙把端口限到自己的出口 IP，或改用方式 B/C/D。未配对设备虽然过不了握手，但没必要把端口敞给全网扫描。
 - 想要 HTTPS 但不想装反代，可用 Agent 内置 TLS（自签证书）：
 
@@ -147,7 +147,7 @@ POCKETSHELL_ADVERTISE=wss://ps.example.com \
 ./pocketshell-agent
 ```
 
-TLS 由 Cloudflare 边缘终结，WebSocket 直通；终端内容始终是 Noise 密文，Cloudflare 也解不开。也可以不写配置文件，直接在 Cloudflare Zero Trust 控制台（Networks → Tunnels）用网页向导完成同样的事。
+TLS 由 Cloudflare 边缘终结，WebSocket 直通；终端/RPC 帧保持 Noise 加密，但 TLS 终结方可读取预览并交付应用 JavaScript，因此属于必须信任的页面交付链路。也可以不写配置文件，直接在 Cloudflare Zero Trust 控制台（Networks → Tunnels）用网页向导完成同样的事。
 
 ---
 
@@ -226,7 +226,7 @@ Funnel 能力），其余全自动。最终拿到 `https://<host>.<tailnet>.ts.n
   的附件约 4 秒，100 MB 约 40 秒。Tailscale 官方只说「不可配置的带宽限制」，
   没有公布具体数字。
 - **Funnel 仍是 beta**，且公网端口恒为 443（Funnel 只允许 443、8443、10000）。
-- **流量会经过 Tailscale 的中继**，但端到端始终是 Noise 密文，中继读不到内容。
+- **流量会经过 Tailscale 的中继**，其中终端/RPC 内容经过 Noise 加密，页面交付和预览还依赖 HTTPS 链路的安全。
 - **第一张证书要签一分钟以上。** 反复失败会被 Let's Encrypt 限流，届时得等很久。
 - Funnel 下**不支持 `POCKETSHELL_TLS=1`**：TLS 由 Funnel 自己终结，Agent 应该
   在回环上说明文 HTTP。
@@ -271,6 +271,7 @@ Environment=POCKETSHELL_ADVERTISE=wss://ps.example.com
 WorkingDirectory=/home/you
 Restart=always
 RestartSec=3
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target
@@ -340,12 +341,32 @@ POCKETSHELL_ADVERTISE=wss://home.example.com POCKETSHELL_INSTANCE_NAME=家里 po
 
 ### 自动更新（OTA）
 
-Agent 启动时、以及手机端每次连接时，会静默向 GitHub Releases 查询是否有新版本（结果缓存 6 小时，查询失败不影响正常运行）。发现新版本后 App 顶栏品牌旁出现更新徽标，点击打开确认弹窗，点「更新」触发：下载对应平台压缩包 → 按 `SHA256SUMS.txt` 校验完整性 → （仅 macOS）用本机自签名身份重签名 → 原子替换正在运行的二进制 → 重启进程。
+OTA 默认关闭。设置 `POCKETSHELL_UPDATE=1` 后才检查 GitHub Releases（缓存 6 小时）。执行更新还要求在 `agent/src/update-trust.ts` 编入经过审核的 Ed25519 公钥；当前信任库为空，因此不会安装更新。配置完成后，更新器先验证签名清单、仓库、递增版本、平台、压缩包精确大小和 SHA256，再解包替换。下载有 30 秒期限，压缩包上限 256 MiB，不允许回退到仅校验 SHA256。
 
 - **自重启的前提是进程被 supervisor 托管**：更新落地后 Agent 会尝试自我重启，若当前由 systemd（上文 `Restart=always`）或 launchd（上文 `KeepAlive`）管理，新二进制会被 supervisor 自动拉起；否则退化为「自己 spawn 一个分离子进程再退出」的兜底方式，稳定性不如受 supervisor 托管。**生产部署务必按上文配好 `Restart=always` / `KeepAlive`**，这样应用内更新才能可靠地重启为新版本。
 - **另一个前提：服务用户要能写二进制所在目录。** 更新时会在二进制旁边写一个临时文件再原子替换过去，所以需要的是**目录**的写权限，不只是文件的。用 `install` 子命令装的话这一条自动满足（二进制放在 `/opt/pocketshell/`，该目录归服务用户所有，`/usr/local/bin/pocketshell-agent` 是指过去的符号链接）。若你手工把二进制放在 root 拥有的 `/usr/local/bin` 下、服务却以普通用户运行，应用内更新会报 `EACCES: permission denied`——此时要么改用 `install` 子命令，要么手动升级二进制。
-- **开关与来源**：`POCKETSHELL_UPDATE=0` 整体关闭 OTA（不检查、不可更新）；`POCKETSHELL_UPDATE_REPO` 指定检查更新所用的 GitHub 仓库（默认 `Big-Pony/pocketshell`，设为 `off` 效果等同 `POCKETSHELL_UPDATE=0`，也可指向自己 fork 后的仓库）；检查请求走 `https://api.github.com/repos/<repo>/releases/latest`，遵循进程环境里的 `HTTPS_PROXY`/`HTTP_PROXY`。
+- **开关与来源**：仅 `POCKETSHELL_UPDATE=1` 开启；未设置、设为 `0` 或 `POCKETSHELL_UPDATE_REPO=off` 均关闭。默认仓库为 `longcrawfish/Big-Pony-pocketshell`，其他仓库仅检查版本。请求遵循进程的 HTTP(S) 代理配置。
 - **macOS：首次 FDA 授权不会因 OTA 丢失。** 新二进制会用本机一份稳定的自签名身份（`PocketShell Self-Signed`）重新签名，签名的 Designated Requirement 不随每次构建变化，系统之前对旧二进制授予的 Full Disk Access 等 TCC 权限在更新后继续生效，不会被重新弹窗要求授权。这份签名身份需要**一次性、交互式**地建立（后台进程无法自动创建/信任证书）——运行 `pocketshell-agent --warmup` 完成；跳过这一步也不影响 OTA 正常更新，只是新二进制不会被签名，届时 TCC 权限可能需要重新授予。
+
+### 安全设置与升级迁移
+
+配对设备拥有 Agent 系统用户的权限，包括执行 shell 和访问该用户的文件。项目根目录书签只是导航设置，**不是文件系统沙箱**。建议使用独立的普通用户和专用 HTTPS 域名，不在同源下部署其他不受信任的 Web 应用。
+
+- Linux 下 `sudo ... install` 使用 `SUDO_USER`。直接以 root 安装时必须指定 `--user <普通用户>`，不会隐式回退为 root。确需 root 时须同时指定 `--user root --allow-root`；手动以 root 启动须设置 `POCKETSHELL_ALLOW_ROOT=1`。
+- 非回环 HTTP 监听默认拒绝，开发例外须显式设置 `POCKETSHELL_ALLOW_INSECURE_HTTP=1`（安装参数为 `--allow-insecure-http`）。已有明文局域网部署应迁移 TLS，或明确接受开发例外。HTTPS 反代后的回环 HTTP 上游仍可用。
+- WebSocket 只接受 `/ws` 和兼容旧版的 `/`。浏览器 Origin 必须与 advertise 的来源完全一致；额外可信来源用 `POCKETSHELL_ALLOWED_ORIGINS` 逗号分隔。无 Origin 的原生客户端仍须 Noise 认证；设置 `POCKETSHELL_REQUIRE_ORIGIN=1` 可进一步禁止它们。
+- 只有 `POCKETSHELL_TRUSTED_PROXIES` 中明确列出的对端 IP 地址才允许提供 `X-Real-IP`；代理必须用真实客户端 IP **覆盖**该头（见上文 Nginx 示例），不能透传客户端自填值。不在列表中的回环对端仅受全局未认证限额约束，避免共享 IP 误封所有用户；代理边缘也应配置连接数与速率限制。
+- 在外部代理屏蔽 `/internal/*` 和 `/theme/import`，本机 hook 仍直接调用回环。Nginx 可增加 `location ^~ /internal/ { return 404; }` 和 `location = /theme/import { return 404; }`；Caddy 在 `reverse_proxy` 前增加 `respond /internal/* 404` 和 `respond /theme/import 404`。
+- 未认证连接上限为全局 64、每个已识别来源 8；Noise 握手期限 5 秒，配对另有 10 秒期限。WS 消息上限 65,535 字节。高成本 RPC 按设备共用容量 60 的令牌桶，每秒补充 1 次；文件分块传输和终端输入不占此限额。
+- 安装的 systemd 服务使用 `UMask=0077`。可选 `NoNewPrivileges=yes` 会禁止终端命令提权（包括 sudo），仅在符合工作流时启用。不要直接启用 `PrivateTmp`、`ProtectHome`，以免破坏现有 tmux socket 和工作目录。
+
+**文件预览：** token 只授权最多 128 个明确列出的公共资源，不授权整棵目录。隐藏文件、任意数据文件、符号链接及含符号链接的父目录均拒绝访问。HTML 默认禁用脚本，启用须确认；脚本仍不能授权清单之外的文件。预览不可信 HTML 前应检查资源清单；CSS 中间接引用的字体/图片等可手动加入。被选中的公共资源本身也可能包含秘密，扩展名白名单不等同于内容扫描。
+
+预览 token 空闲期限为 2 分钟，绝对期限为 10 分钟。活动预览通过认证信道续期，达到绝对期限后重新签发；关闭/隐藏预览或撤销设备会撤销 token，视频重新签发时保留播放位置。响应带 `no-store`、`no-referrer`、sandbox CSP 和 `nosniff`。主应用使用独立 CSP，内联启动脚本按 hash 放行，保留现有设备身份兼容。浏览器密钥仍在 localStorage；CSP 减少注入面，不能保护已经被恶意同源 JavaScript 控制的会话。
+
+审计覆盖认证、设备撤销、文件修改、通知配置和更新结果，仅记录操作元数据，不记录终端正文、文件正文和凭据。`audit.log` 在 5 MiB 时轮转，保留一个备份；需要长期留存时应外部采集。
+
+**发布签名：** 维护者在仓库外保管 Ed25519 私钥（权限 `0600`），将其 SPKI PEM 公钥经审核加入 `agent/src/update-trust.ts`，使用固定 key ID。只在签名机设置 `POCKETSHELL_SIGNING_KEY_FILE`。发布脚本在发布前检查密钥，生成 `release-manifest.json` 和 `release-manifest.sig`；缺密钥或密钥不受信任时停止发布。换钥前先通过可信版本发布新公钥，再切换签名私钥。不能从下载的 Release 或运行时环境变量接受验证公钥。首次安装的 `install.sh` 目前仍只校验同一 Release 的 SHA256，因此脚本/二进制仍须从可信渠道取得，或本地构建经过审核的代码版本。
 
 ### 通知与本地回环端点
 
@@ -386,7 +407,7 @@ pocketshell-agent pair [--name <设备名>]
 pocketshell-agent devices remove <pubkey-or-fingerprint>
 ```
 
-> `pair` 会把待配对码原子写入 `<keyDir>/pairing.pending.json`（0600）；常驻 Agent 在下一次有未授权设备尝试握手时读取并采纳它，配对成功后自动清盘。
+> `pair` 会把待配对码原子写入 `<keyDir>/pairing.pending.json`（0600）；常驻 Agent 在下一次有未授权设备尝试握手时读取并采纳它，尝试次数和消费状态事务性写入 `pairing-state.db`。五次失败后跨重连、重启仍失效；重新执行 `pair` 才创建新挑战，旧 pending 文件不能重置次数。
 
 > `devices remove` 对常驻 Agent 同样即时生效：Agent 每 3 秒轮询一次 `<keyDir>/devices.json`，删除后数秒内该设备即失去授权、在线连接被断开、推送订阅被清除，无需重启。
 

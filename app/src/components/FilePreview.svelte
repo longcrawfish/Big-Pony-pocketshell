@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
+  import { previewAssets } from "../lib/preview-assets";
   import { t } from "svelte-i18n";
   import { tr } from "../lib/i18n";
   import { Connection } from "../lib/net/connection";
@@ -44,6 +46,15 @@
   let videoSrc = $state("");
   let htmlSrc = $state("");
   let MarkdownComp = $state<any>(null);
+  let currentToken = $state("");
+  let grantVersion = 0;
+  let destroyed = false;
+  let loadVersion = 0;
+  let assetText = $state("");
+  let assetPath = "";
+  let allowScripts = $state(false);
+  let videoEl: HTMLVideoElement | undefined;
+  let resumeAt = 0;
   let mdToken = $state(""); // one token per md render, reused for all local images
   let previewFullscreen = $state(false);
   let drawerOpen = $state(false);
@@ -68,7 +79,7 @@
 
   const kind = $derived(previewKind(path));
   const dirOf = (p: string) => p.slice(0, p.lastIndexOf("/")) || "/";
-  // scope = the token's base subtree. Use the project-root bookmark ONLY when it
+  // scope anchors the explicit file manifest. Use the project-root bookmark ONLY when it
   // is an ancestor of this file (else relFromBase escapes base → the /preview
   // route's traversal guard 403s). Otherwise fall back to the file's own dir.
   const scope = $derived(
@@ -80,16 +91,49 @@
   function origin(): string {
     return previewOrigin(conn.agentUrl);
   }
+  async function grant(files: string[]): Promise<string> {
+    const version = ++grantVersion, requestedPath = path;
+    const { token } = files.length ? (await conn.rpc("preview.mint", { base: scope, files, scripts: kind === "html" && allowScripts })) as { token: string } : { token: "" };
+    if (destroyed || !active || version !== grantVersion || requestedPath !== path) {
+      if (token) void conn.rpc("preview.revoke", { token }).catch(() => {});
+      throw new Error("preview no longer active");
+    }
+    const old = currentToken;
+    currentToken = token;
+    if (old) void conn.rpc("preview.revoke", { token: old }).catch(() => {});
+    return token;
+  }
   async function mintUrl(relpath: string): Promise<string> {
-    const { token } = (await conn.rpc("preview.mint", { base: scope })) as { token: string };
+    const files = kind === "html" ? assetText.split("\n").map(p => p.trim()).filter(Boolean) : [relpath];
+    const token = await grant(files);
     return previewUrl(origin(), token, relpath);
   }
+  async function toggleScripts() {
+    if (!allowScripts && !window.confirm(tr("preview.scriptsConfirm"))) return;
+    allowScripts = !allowScripts;
+    await load();
+  }
+  function revokePreview() {
+    grantVersion++;
+    const token = currentToken;
+    currentToken = "";
+    if (token) void conn.rpc("preview.revoke", { token }).catch(() => {});
+  }
+  onDestroy(() => { destroyed = true; loadVersion++; revokePreview(); });
+  $effect(() => {
+    const token = currentToken;
+    if (!active || !token) return;
+    const timer = setInterval(() => {
+      void conn.rpc("preview.renew", { token }).then((r: any) => { if (!r?.ok) void refresh(); }).catch(() => {});
+    }, 45_000);
+    return () => clearInterval(timer);
+  });
   async function loadImage() {
     try { imgSrc = await mintUrl(relFromBase(scope, path)); }
     catch { notice = tr("preview.imageFailed"); }
   }
   async function loadVideo() {
-    try { videoSrc = await mintUrl(relFromBase(scope, path)); }
+    try { resumeAt = videoEl?.currentTime ?? 0; videoSrc = await mintUrl(relFromBase(scope, path)); }
     catch { notice = tr("preview.videoFailed"); }
   }
 
@@ -115,17 +159,21 @@
   // 包一层而不是在 loadInner 里逐条 return 前置位——那个函数有 5 处早退。
   let loadingContent = $state(false);
   async function load() {
+    const version = ++loadVersion;
     loadingContent = true;
-    try { await loadInner(); } finally { loadingContent = false; }
+    try { await loadInner(version); } finally { if (version === loadVersion) loadingContent = false; }
   }
 
-  async function loadInner() {
+  async function loadInner(version: number) {
+    const requestedPath = path;
+    const stale = () => destroyed || version !== loadVersion || requestedPath !== path;
     notice = "";
     plain = false;
     canEdit = false;
     if (mode === "diff") {
       try {
         const r = (await conn.rpc("fs.diff", { path })) as { hunks: typeof hunks };
+        if (stale()) return;
         hunks = r.hunks;
         if (!hunks.length) notice = tr("preview.noChanges");
       } catch (e: any) {
@@ -142,6 +190,7 @@
     }
     try {
       const r = (await conn.rpc("fs.read", { path })) as { content: string; lang: string; mtime: number; truncated?: boolean; binary?: boolean };
+      if (stale()) return;
       if (r.binary) { notice = tr("preview.binary"); lines = []; html = ""; canEdit = false; return; }
       if (r.truncated) notice = tr("preview.truncated");
       raw = r.content; fileMtime = r.mtime; fileLang = r.lang;
@@ -153,15 +202,20 @@
       // R4: oversized files come back plain → skip the per-line gutter (thousands
       // of divs) and show a hint; the HTML is already escaped, no XSS risk.
       const res = await highlightTo(r.lang, r.content);
+      if (stale()) return;
       plain = res.plain;
       if (res.plain) notice = notice ? `${notice} · ${tr("preview.plainLarge")}` : tr("preview.plainLarge");
       lines = res.plain ? [] : splitLines(r.content);
       html = res.html;
+      if (assetPath !== path) {
+        assetPath = path;
+        allowScripts = false;
+        assetText = previewAssets(raw, kind, relFromBase(scope, path)).join("\n");
+      }
       if (kind === "markdown") {
         try {
           // Mint ONE token up-front; every local image reuses it (no per-image RPC).
-          const { token } = (await conn.rpc("preview.mint", { base: scope })) as { token: string };
-          mdToken = token;
+          mdToken = await grant(previewAssets(raw, "markdown", relFromBase(scope, path)));
           MarkdownComp = (await import("./MarkdownView.svelte")).default; // lazy chunk
         } catch { onToast(tr("preview.mdFailed")); view = "source"; }
       }
@@ -211,7 +265,7 @@
   $effect(() => { if (active && loaded !== path + mode) { loaded = path + mode; void load(); } });
 
   // Leaving/hiding this tab drops fullscreen + drawer so they can't get stuck off-screen.
-  $effect(() => { if (!active) { previewFullscreen = false; drawerOpen = false; widthPickOpen = false; } });
+  $effect(() => { if (!active) { loadVersion++; revokePreview(); loaded = ""; previewFullscreen = false; drawerOpen = false; widthPickOpen = false; } });
 
   // 容器尺寸随全屏切换/旋屏/键盘弹出而变，用 ResizeObserver 跟住。
   // jsdom 里 ResizeObserver 可能缺失，故降级为挂载时量一次——
@@ -304,7 +358,7 @@
           {#if videoSrc}
             <!-- playsinline 阻止 iOS 强制全屏接管；preload=metadata 只取时长
                  与首帧，不预下整个文件（手机流量场景） -->
-            <video src={videoSrc} controls playsinline preload="metadata">
+            <video bind:this={videoEl} onloadedmetadata={() => { if (videoEl && resumeAt) videoEl.currentTime = resumeAt; }} src={videoSrc} controls playsinline preload="metadata">
               <track kind="captions" />
               {$t('preview.videoUnsupported')}
             </video>
@@ -315,7 +369,13 @@
           buildImageUrl={mdImageUrl}
           onFail={() => { view = "source"; onToast(tr("preview.mdFailed")); }} />
       {:else if kind === "html" && view === "render"}
-        <HtmlView src={htmlSrc} {widthPx} scale={previewScale} />
+        <details class="pv-assets">
+          <summary>{$t("preview.assets")}</summary>
+          <textarea aria-label={$t("preview.assets")} bind:value={assetText} rows="4"></textarea>
+          <button onclick={() => void load()}>{$t("preview.applyAssets")}</button>
+          <button onclick={() => void toggleScripts()}>{allowScripts ? $t("preview.disableScripts") : $t("preview.enableScripts")}</button>
+        </details>
+        <HtmlView src={htmlSrc} {widthPx} scale={previewScale} {allowScripts} />
       {:else if loadingContent}
         <!-- 14 期需求 5：fs.read + 高亮期间此前是纯空白。Skeleton 自带 300ms
              延迟，小文件（局域网 50ms）不会闪。 -->
@@ -373,6 +433,8 @@
 </div>
 
 <style>
+  .pv-assets { padding: 8px; font-size: 12px; }
+  .pv-assets textarea { display: block; width: 100%; box-sizing: border-box; }
   /* 代码区跟随主题（--code-*）。终端区从 2026-08-05 起也跟随主题明暗，
      两者同源于该主题的 .ghostty 调色板。 */
   .preview { width: 100%; height: 100%; display: flex; flex-direction: column; background: var(--code-bg); color: var(--code-fg); }

@@ -30,6 +30,7 @@ if [ "$dry_run" -eq 1 ]; then
   export POCKETSHELL_ALLOW_DIRTY=1
 else
   [ -z "$(git status --porcelain)" ] || { echo 'Working tree must be clean' >&2; exit 1; }
+  bun run agent/scripts/sign-release.ts --check
   command -v gh >/dev/null
   gh auth status >/dev/null
   remote=$(git remote get-url origin)
@@ -74,6 +75,8 @@ if [ "$dry_run" -eq 1 ]; then
   echo "Dry-run artifacts: $dist ($built). No commit, tag, push or publication."
   exit 0
 fi
+bun run agent/scripts/sign-release.ts "$dist" "v$version"
+[ -s "$dist/release-manifest.json" ] && [ -s "$dist/release-manifest.sig" ] || { echo 'Missing signed manifest' >&2; exit 1; }
 sha=$(git rev-parse --short HEAD)
 [ "$built" = "$version-$sha" ] || { echo "Version/SHA mismatch: $built" >&2; exit 1; }
 [ -z "$(git status --porcelain)" ] || { echo 'Build changed tracked source; refuse to tag' >&2; exit 1; }
@@ -84,4 +87,4 @@ notes_args=(--generate-notes)
 [ -z "$notes_file" ] || notes_args=(--notes-file "$notes_file")
 assets=()
 for archive in "${archives[@]}"; do assets+=("$dist/$archive"); done
-gh release create "v$version" --repo "$release_repo" --verify-tag --title "PocketShell v$version" "${notes_args[@]}" "${assets[@]}" "$dist/SHA256SUMS.txt"
+gh release create "v$version" --repo "$release_repo" --verify-tag --title "PocketShell v$version" "${notes_args[@]}" "${assets[@]}" "$dist/SHA256SUMS.txt" "$dist/release-manifest.json" "$dist/release-manifest.sig"

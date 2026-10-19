@@ -1,6 +1,7 @@
 // A7 Pairing — one-time, TTL-bounded, attempt-limited pairing code. Process-
 // level singleton (attempts persist across a client's reconnect attempts).
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
+import { Database } from "bun:sqlite";
 import { writeFileSync, readFileSync, unlinkSync, renameSync } from "node:fs";
 import { join } from "node:path";
 
@@ -48,6 +49,7 @@ export function createPairing(opts: { code?: string; ttlMs?: number; maxAttempts
 // minted at boot — without it, a code minted while the boot code is still live
 // is silently ignored and the user sees a misleading bad_code.
 export interface PendingPairingRecord {
+  challengeId?: string;
   code: string;
   expiresAt: number;
   maxAttempts: number;
@@ -95,4 +97,49 @@ export function shouldAdoptDiskPairing(i: {
 }): boolean {
   if (!i.memoryLive) return true;             // nothing live to protect
   return i.diskMintedAt > i.memoryMintedAt;   // a newer explicit mint wins
+}
+
+/** Disk challenges retain their attempt budget across connections and restarts.
+ * Each operation opens/closes the DB so a dead challenge cannot leak handles.
+ * Consuming before registry.add is intentional: a crash requires a new code,
+ * never a second use of the old one. No code or device secret is stored here. */
+export function persistentPairing(keyDir: string, rec: PendingPairingRecord, now = Date.now): Pairing {
+  const id = createHash("sha256").update(JSON.stringify([rec.challengeId, rec.code, rec.expiresAt, rec.mintedAt])).digest("hex");
+  const access = <T>(fn: (db: Database) => T): T => {
+    const db = new Database(join(keyDir, "pairing-state.db"), { create: true });
+    try {
+      db.run("PRAGMA busy_timeout=2000");
+      db.run("CREATE TABLE IF NOT EXISTS challenges (id TEXT PRIMARY KEY, remaining INTEGER NOT NULL, consumed INTEGER NOT NULL, expires REAL NOT NULL)");
+      return db.transaction(() => {
+        db.run("DELETE FROM challenges WHERE expires < ?", [now() - 86400000]);
+        db.run("INSERT OR IGNORE INTO challenges VALUES (?, ?, 0, ?)", [id, Math.min(5, Math.max(0, rec.maxAttempts)), rec.expiresAt]);
+        return fn(db);
+      }).immediate();
+    } finally { db.close(); }
+  };
+  const status = (db: Database): "expired" | "consumed" | "no_attempts" | null => {
+    const row = db.query("SELECT remaining, consumed FROM challenges WHERE id = ?").get(id) as { remaining: number; consumed: number };
+    if (now() > rec.expiresAt) return "expired";
+    if (row.consumed) return "consumed";
+    return row.remaining <= 0 ? "no_attempts" : null;
+  };
+  return {
+    code: rec.code,
+    isLive() { try { return access(db => status(db) === null); } catch { return false; } },
+    verify(input) {
+      // Fail closed on storage errors, including exhausted disk space.
+      try {
+        return access(db => {
+          const reason = status(db);
+          if (reason) return { ok: false as const, reason };
+          if (input !== rec.code) {
+            db.run("UPDATE challenges SET remaining = remaining - 1 WHERE id = ?", [id]);
+            return { ok: false as const, reason: "bad_code" as const };
+          }
+          db.run("UPDATE challenges SET consumed = 1 WHERE id = ?", [id]);
+          return { ok: true as const };
+        });
+      } catch { return { ok: false, reason: "no_attempts" }; }
+    },
+  };
 }

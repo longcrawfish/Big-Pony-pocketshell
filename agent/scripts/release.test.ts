@@ -27,6 +27,10 @@ if [ "$1" = -e ]; then
   if [[ "$2" == *'await Bun.write'* ]]; then printf '{"version":"%s"}\\n' "$3" > "$TEST_ROOT/app/package.json"; cp -f "$TEST_ROOT/app/package.json" "$TEST_ROOT/agent/package.json"; fi
   exit
 fi
+if [ "$1" = run ] && [ "$2" = agent/scripts/sign-release.ts ] && [ "$3" != --check ]; then
+  echo fixture > "$TEST_ROOT/agent/dist/release-manifest.json"
+  echo fixture > "$TEST_ROOT/agent/dist/release-manifest.sig"
+fi
 if [ "$1" = run ] && [ "$2" = build:bin ]; then
   mkdir -p "$TEST_ROOT/agent/dist"
   for platform in linux-x64 linux-arm64 darwin-arm64 darwin-x64; do

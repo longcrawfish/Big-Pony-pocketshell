@@ -15,11 +15,14 @@ import { openHintStore, type HintStore } from "./hint-store";
 import { openThemeStore, type ThemeStore } from "./theme-store";
 import { normalizeInstanceName } from "./instance-brand";
 import { diagEnabled } from "./diag-report";
+import { isLocalAddr } from "./net-addr";
+import type { IngressPolicy } from "./ingress-security";
 
 /** The repo OTA is allowed to auto-apply from. See the `update` block below. */
 export const OFFICIAL_UPDATE_REPO = "longcrawfish/Big-Pony-pocketshell";
 
 export interface AgentConfig {
+  ingress?: IngressPolicy;
   listen: { host: string; port: number };
   advertise?: string;
   workspaceRoot: string;
@@ -149,6 +152,7 @@ export function resolveTlsMaterial(
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AgentConfig {
+  if (process.getuid?.() === 0 && env.POCKETSHELL_ALLOW_ROOT !== "1") throw new Error("Refusing a root agent; use a non-root user or explicitly set POCKETSHELL_ALLOW_ROOT=1.");
   tmuxCommand([], env.POCKETSHELL_TMUX_SOCKET); // validate isolation before creating runtime state
   const keyDir = env.POCKETSHELL_KEY_DIR ?? join(homedir(), ".pocketshell");
   const authorizedKeys = (env.POCKETSHELL_AUTHORIZED_KEYS ?? "")
@@ -179,6 +183,14 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     cert: env.POCKETSHELL_TLS_CERT ?? file.tlsCert,
     key: env.POCKETSHELL_TLS_KEY ?? file.tlsKey,
   };
+  if (!tls.enabled && !isLocalAddr(host) && host !== "localhost" && env.POCKETSHELL_ALLOW_INSECURE_HTTP !== "1") {
+    throw new Error("Non-loopback plaintext HTTP requires POCKETSHELL_ALLOW_INSECURE_HTTP=1 for development; use loopback behind HTTPS or enable TLS.");
+  }
+  const origins = (env.POCKETSHELL_ALLOWED_ORIGINS ?? "").split(",").filter(Boolean).map(v => {
+    const u = new URL(v.trim());
+    if (!["https:", "http:"].includes(u.protocol) || u.origin !== v.trim()) throw new Error("Allowed origins must be exact HTTP(S) origins");
+    return u.origin;
+  });
 
   const audit = createAudit({ write: fileAuditWriter(join(keyDir, "audit.log")) });
   const rateLimiter = createRateLimiter({ now: () => Date.now(), onLock: (ip) => audit.log({ event: "ratelimit_lock", ip }) });
@@ -231,6 +243,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   };
 
   return {
+    ingress: { origins, trustedProxies: (env.POCKETSHELL_TRUSTED_PROXIES ?? "").split(",").map(v => v.trim()).filter(Boolean), allowMissingOrigin: env.POCKETSHELL_REQUIRE_ORIGIN !== "1" },
     listen: { host, port },
     advertise,
     workspaceRoot: env.POCKETSHELL_WORKSPACE ?? process.cwd(),

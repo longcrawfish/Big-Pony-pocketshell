@@ -614,6 +614,12 @@ curl -fsSL https://pocketshell.net/install.sh | sh
     },
   },
   preview: {
+    assets: "Preview assets (one relative path per line)",
+    applyAssets: "Apply asset list",
+    enableScripts: "Enable scripts",
+    disableScripts: "Disable scripts",
+    scriptsConfirm: "Enable only for trusted pages. Scripts may forward the listed files. Confirm the list contains no private data.",
+
     noChanges: "No changes",
     diffFailed: "Diff failed",
     binary: "Binary file; no preview",
@@ -645,6 +651,7 @@ curl -fsSL https://pocketshell.net/install.sh | sh
     },
   },
   update: {
+    manualRequired: 'This deployment requires a manual update by its maintainer.',
     badge: "Update available",
     title: "New version available",
     current: "Current",

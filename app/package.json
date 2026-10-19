@@ -1,7 +1,7 @@
 {
   "name": "pocketshell-app",
   "version": "1.21.5",
-  "description": "PocketShell App — Svelte 5 + xterm.js mobile frontend, embedded into the Agent binary.",
+  "description": "PocketShell App \u2014 Svelte 5 + xterm.js mobile frontend, embedded into the Agent binary.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -38,27 +38,31 @@
     "@xterm/addon-fit": "0.12.0-beta.292",
     "@xterm/addon-webgl": "0.20.0-beta.291",
     "@xterm/xterm": "6.1.0-beta.292",
-    "dompurify": "^3.4.12",
+    "dompurify": "^3.4.17",
     "highlight.js": "^11.11.1",
-    "markdown-it": "^14.3.0",
+    "markdown-it": "^14.3.3",
     "noise-handshake": "^4.2.0",
     "sodium-javascript": "^0.8.0",
     "svelte-i18n": "^4.0.1"
   },
   "devDependencies": {
-    "@playwright/test": "1.43.1",
+    "@playwright/test": "1.64.1",
     "@sveltejs/vite-plugin-svelte": "^7.3.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/svelte": "^5.4.2",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^26.1.2",
     "jsdom": "^25.0.0",
-    "svelte": "^5.0.0",
+    "svelte": "^5.57.2",
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
     "vitest": "^4.1.11"
   },
   "patchedDependencies": {
     "@xterm/xterm@6.1.0-beta.292": "patches/@xterm%2Fxterm@6.1.0-beta.292.patch"
+  },
+  "overrides": {
+    "esbuild": "^0.28.2",
+    "source-map-js": "^1.2.2"
   }
 }

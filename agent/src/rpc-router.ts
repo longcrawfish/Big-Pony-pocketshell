@@ -33,6 +33,8 @@ import { checkLatest } from "./update-check";
 import { importTheme } from "./server-theme";
 import { readCache, writeCache, isFresh, CHECK_TTL_MS, type CachedCheck } from "./update-cache";
 import { AGENT_VERSION } from "./version";
+import { createRpcBudget } from "./rpc-budget";
+import { RELEASE_PUBLIC_KEYS } from "./update-trust";
 
 // ---------------------------------------------------------------------------
 // Context
@@ -220,7 +222,7 @@ export const parse = {
     session: str(p, "session"),
     opts: { colors: flag(p, "colors"), back: optNum(p, "back"), endBack: optNum(p, "endBack") },
   }),
-  previewMint: (p: RpcParams) => ({ base: str(p, "base") }),
+  previewMint: (p: RpcParams) => ({ base: str(p, "base"), files: p.files as string[], scripts: p.scripts === true }),
   notifySetConfig: (p: RpcParams) => ({ config: p.config as NotifyConfig }),
   notifySubscribe: (p: RpcParams) => ({ subscription: p.subscription }),
   notifyWire: (p: RpcParams) => ({ tool: p.tool as NotifyTool }),
@@ -394,8 +396,12 @@ export const RPC_TABLE: Record<string, RpcHandler> = {
   // it names adds no new exposure.
   "preview.mint": (ctx, p) => {
     const dev = ctx.devicePub ?? "unknown";
-    return ok({ token: ctx.previewTokens.mint(parse.previewMint(p).base, dev, Date.now()) });
+    const a = parse.previewMint(p);
+    return ok({ token: ctx.previewTokens.mint(a.base, dev, Date.now(), a) });
   },
+
+  "preview.renew": (ctx, p) => ok({ ok: ctx.previewTokens.renew(str(p, "token"), ctx.devicePub ?? "", Date.now()) }),
+  "preview.revoke": (ctx, p) => { ctx.previewTokens.revoke(str(p, "token"), ctx.devicePub ?? ""); return ok({ ok: true }); },
 
   // 实例身份：只读，走通用 RPC 信封（不需要新增 protocol 消息类型）。
   // 天然只在 Noise 握手成功后可得 —— 未配对设备看不到实例名。
@@ -487,7 +493,8 @@ export const RPC_TABLE: Record<string, RpcHandler> = {
           out = { ...r, repo, checkedAt: Date.now() };
           writeCache(ctx.config.keyDir, out);
         }
-        ctx.sendResult(out);
+        const trusted = ctx.config.update?.official && Object.keys(RELEASE_PUBLIC_KEYS).length > 0;
+        ctx.sendResult(trusted ? out : { ...out, canApply: false, reason: "manual_update_required" });
       } catch (e) {
         ctx.sendError(rpcErrorCode(e), String(e));
       }
@@ -531,6 +538,17 @@ export function lookupRpc(method: string): RpcHandler | undefined {
   return Object.hasOwn(RPC_TABLE, method) ? RPC_TABLE[method] : undefined;
 }
 
+const AUDITED_METHODS = new Set(["fs.op", "fs.write", "fs.uploadChunk", "notify.setConfig", "notify.wire", "notify.unwire", "theme.import", "theme.remove", "update.apply"]);
+const budgets = new WeakMap<AgentConfig, ReturnType<typeof createRpcBudget>>();
+function auditOperation(ctx: RpcContext, method: string, params: unknown, outcome: string) {
+  if (!AUDITED_METHODS.has(method)) return;
+  const p = asParams(params);
+  // Transfer chunks are too numerous; audit only the completing chunk.
+  if (["fs.write", "fs.uploadChunk"].includes(method) && !p.last) return;
+  const path = typeof p.path === "string" ? p.path : typeof p.destPath === "string" ? p.destPath : undefined;
+  ctx.config.audit?.log({ event: "operation", pub: ctx.devicePub, detail: { method, outcome, path: path?.slice(0, 1024) } });
+}
+
 /**
  * Route one `rpc` message. Answers on every path: a table hit either yields a
  * result (sent via ctx.sendResult) or answered itself; a miss replies
@@ -543,25 +561,31 @@ export function lookupRpc(method: string): RpcHandler | undefined {
  */
 export function dispatchRpc(ctx: RpcContext, method: string, params: unknown): void | Promise<void> {
   try {
+    let budget = budgets.get(ctx.config);
+    if (!budget) { budget = createRpcBudget(); budgets.set(ctx.config, budget); }
+    if (!budget(ctx.devicePub ?? "unknown", method)) { ctx.sendError("rate_limited", "RPC budget exhausted; retry later"); return; }
     const handler = lookupRpc(method);
     if (!handler) {
       ctx.sendError("unknown_method", `unknown method: ${method}`);
       return;
     }
     const outcome = handler(ctx, asParams(params));
+    if (!isThenable(outcome)) auditOperation(ctx, method, params, outcome.kind === "sent" ? "accepted" : "success");
     if (isThenable(outcome)) {
       // .then(ok).catch(err) — not .then(ok, err) — so a throw from the send
       // path lands in the same error reply the old inline try/catch produced.
       return outcome
         .then((o) => {
+          auditOperation(ctx, method, params, "success");
           if (o.kind === "result") ctx.sendResult(o.result);
           else if (o.kind === "binary") ctx.sendBinary(o.meta, o.blob);
         })
-        .catch((e) => { ctx.sendError(rpcErrorCode(e), String(e)); });
+        .catch((e) => { auditOperation(ctx, method, params, "failure"); ctx.sendError(rpcErrorCode(e), String(e)); });
     }
     if (outcome.kind === "result") ctx.sendResult(outcome.result);
     else if (outcome.kind === "binary") ctx.sendBinary(outcome.meta, outcome.blob);
   } catch (e) {
+    auditOperation(ctx, method, params, "failure");
     ctx.sendError(rpcErrorCode(e), String(e));
   }
 }

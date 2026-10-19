@@ -8,7 +8,7 @@ This guide covers five ways to expose the PocketShell Agent to your phone, from 
 
 | Option | When to use | Requires |
 |---|---|---|
-| [A. Bare IP + port](#option-a--bare-ip--port-no-domain) | Same LAN, or a public IP but no domain | nothing |
+| [A. Bare IP + port](#option-a--bare-ip--port-no-domain) | Isolated development network only | explicit insecure opt-in |
 | [B. Direct server + domain](#option-b--direct-server-deployment-with-a-domain-caddy--nginx) | Agent runs on a server with a public IP and a domain | Caddy or Nginx |
 | [C. Cloudflare Tunnel](#option-c--cloudflare-tunnel-no-public-ip) | Home/office machine without a public IP | Cloudflare account + domain |
 | [D. frp relay server](#option-d--frp-relay-server-no-public-ip-self-controlled) | No public IP, but you own a VPS and want full control | VPS + domain |
@@ -23,7 +23,7 @@ This guide covers five ways to expose the PocketShell Agent to your phone, from 
 
 **2. Advertised address (`POCKETSHELL_ADVERTISE`).** The **pairing string** printed on first run embeds "where the phone should connect", taken from `POCKETSHELL_ADVERTISE` as a WebSocket URL: `ws://<IP>:8722` for direct access, `wss://your.domain` behind an HTTPS proxy. If unset it defaults to `ws://<HOST>:<PORT>`, which is unreachable from a phone when bound to `127.0.0.1` or `0.0.0.0` — **set it explicitly in every deployment**.
 
-**3. Encryption vs TLS.** PocketShell is end-to-end encrypted on its own (a Noise IK handshake per connection: mutual authentication + forward secrecy). Terminal traffic is ciphertext inside the WebSocket frames, so **even over plain `http://` + `ws://`, a man-in-the-middle can neither read nor impersonate anything**. What HTTPS adds is browser-side comfort: no address-bar warning, unrestricted clipboard APIs, and PWA installability. Bare-IP deployments (option A) are therefore safe; HTTPS setups (B/C/D) give the most complete experience.
+**3. Encryption and TLS protect different boundaries.** Noise IK authenticates devices and encrypts terminal/RPC traffic. It does not protect delivery of the browser application: an active attacker on HTTP can replace JavaScript and steal device keys or commands. Preview HTTP responses also bypass Noise. Use HTTPS/WSS with a trusted certificate for remote access; plaintext access is an explicit development exception.
 
 > Pairing tip: the pairing code has a 300 s TTL and is only generated at process start. To pair a new phone on a long-running Agent, no restart is needed — run `pocketshell-agent pair` on the Agent machine to mint a fresh pairing string.
 
@@ -31,10 +31,10 @@ This guide covers five ways to expose the PocketShell Agent to your phone, from 
 
 ### Option A — bare IP + port (no domain)
 
-Simplest: phone and Agent share a LAN, or the Agent machine has a public IP.
+Development only: an isolated network you control. Do not expose plaintext HTTP on a public IP.
 
 ```bash
-POCKETSHELL_HOST=0.0.0.0 \
+POCKETSHELL_HOST=0.0.0.0 POCKETSHELL_ALLOW_INSECURE_HTTP=1 \
 POCKETSHELL_ADVERTISE=ws://192.168.1.10:8722 \
 ./pocketshell-agent
 ```
@@ -43,7 +43,7 @@ Open `http://192.168.1.10:8722` on your phone and paste the pairing string.
 
 Notes:
 
-- Terminal traffic stays Noise-encrypted end-to-end (concept 3 above); however on an `http://` origin the browser restricts some APIs (clipboard may need manual permission, no PWA install).
+- This opt-in accepts active network attacks against page delivery and plaintext preview content. HTTP also restricts clipboard and PWA APIs.
 - **On a public IP, narrow the attack surface**: firewall the port to your own egress IP, or use options B/C/D. Unpaired devices can't pass the handshake, but there's no reason to leave the port open to internet-wide scanning.
 - Want HTTPS without a reverse proxy? Use the Agent's built-in TLS with a self-signed cert:
 
@@ -147,7 +147,7 @@ POCKETSHELL_ADVERTISE=wss://ps.example.com \
 ./pocketshell-agent
 ```
 
-TLS terminates at Cloudflare's edge with WebSocket passthrough; terminal traffic remains Noise ciphertext that Cloudflare cannot read. Alternatively, skip the config file and use the web wizard in Cloudflare Zero Trust (Networks → Tunnels).
+TLS terminates at Cloudflare's edge with WebSocket passthrough; terminal/RPC frames remain Noise ciphertext. The TLS terminator can read previews and serves the application JavaScript, so it is part of the trusted delivery path. Alternatively, skip the config file and use the web wizard in Cloudflare Zero Trust (Networks → Tunnels).
 
 ---
 
@@ -229,8 +229,7 @@ Things worth knowing before you pick this:
   limits" and publishes no number.
 - **Funnel is still beta**, and the public port is always 443 (Funnel allows
   only 443, 8443 and 10000).
-- **Your traffic passes through Tailscale's relays**, but it stays Noise
-  ciphertext end to end — the relay cannot read it.
+- **Your traffic passes through Tailscale's relays**, with terminal/RPC content encrypted by Noise. Page delivery and previews additionally depend on the HTTPS path.
 - **The first certificate takes a minute or more.** Repeated failures are
   rate-limited by Let's Encrypt and can force a long wait.
 - `POCKETSHELL_TLS=1` is not supported with Funnel; Funnel terminates TLS
@@ -279,6 +278,7 @@ Environment=POCKETSHELL_ADVERTISE=wss://ps.example.com
 WorkingDirectory=/home/you
 Restart=always
 RestartSec=3
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target
@@ -348,12 +348,32 @@ So you end up with two independent PWAs and two home-screen icons you can tell a
 
 ### Auto-update (OTA)
 
-On startup, and again each time a phone connects, the Agent silently checks GitHub Releases for a newer version (result cached 6h; a failed check never affects normal operation). When a newer version exists, an update badge appears next to the brand in the app's top bar; tapping it opens a confirmation dialog, and tapping "Update" triggers: download the platform's tar.gz → verify it against `SHA256SUMS.txt` → (macOS only) re-sign with a local self-signed identity → atomically swap the running binary → restart the process.
+OTA is disabled by default. With `POCKETSHELL_UPDATE=1`, the Agent checks GitHub Releases (6-hour cache). Applying an update additionally requires a reviewed Ed25519 public key compiled into `agent/src/update-trust.ts`; the current trust store is empty, so installation is refused. When provisioned, the updater verifies the signed manifest, repository, newer version, platform, exact archive size and SHA256 before extraction and replacement. Downloads have a 30-second deadline and a 256 MiB archive ceiling. There is no checksum-only fallback.
 
 - **The self-restart requires the process to be supervisor-managed.** Once the swap lands, the Agent tries to restart itself; if it's under systemd (`Restart=always`, above) or launchd (`KeepAlive`, above), the supervisor relaunches the new binary automatically. Otherwise it falls back to spawning a detached replacement process and exiting — a less reliable path than supervisor management. **Production deployments should set `Restart=always` / `KeepAlive` as shown above** so in-app updates can reliably come back up as the new version.
 - **It also requires the service user to be able to write the binary's directory.** An update writes a temporary file next to the binary and renames it into place, so what it needs is write access to the *directory*, not just the file. The `install` subcommand arranges this for you: the binary goes to `/opt/pocketshell/`, owned by the service user, with `/usr/local/bin/pocketshell-agent` as a symlink pointing at it. If you instead place the binary by hand in root-owned `/usr/local/bin` and run the service as a regular user, in-app updates fail with `EACCES: permission denied` — either switch to the `install` subcommand or upgrade the binary manually.
-- **Env vars:** `POCKETSHELL_UPDATE=0` disables OTA entirely (no checks, no updates). `POCKETSHELL_UPDATE_REPO` sets the GitHub repo checked for releases (default `Big-Pony/pocketshell`; `off` disables OTA the same as `POCKETSHELL_UPDATE=0`; can also point at your own fork). Checks hit `https://api.github.com/repos/<repo>/releases/latest` and honor `HTTPS_PROXY`/`HTTP_PROXY` from the process environment.
+- **Env vars:** `POCKETSHELL_UPDATE=1` opts in; unset/`0` or `POCKETSHELL_UPDATE_REPO=off` disables OTA. The default repository is `longcrawfish/Big-Pony-pocketshell`; other repositories are check-only. HTTP(S) proxy environment variables are honored.
 - **macOS: the first Full Disk Access grant survives OTA updates.** Each new binary is re-signed with a stable local self-signed identity (`PocketShell Self-Signed`), so its codesign designated requirement doesn't change between builds — TCC permissions (like Full Disk Access) granted to the previous binary carry over without a re-prompt. Provisioning that signing identity is a **one-time, interactive** step (a background process can't create/trust a certificate on its own) — run `pocketshell-agent --warmup` to set it up. Skipping this doesn't block OTA updates; the new binary just won't be signed, and TCC permissions may need to be re-granted.
+
+### Security settings and upgrade migration
+
+A paired device has the operating-system privileges of the Agent user, including shell execution and access to that user's files. The project-root bookmark is a navigation preference, **not a filesystem sandbox**. Use a dedicated non-root account and a dedicated HTTPS origin; keep unrelated web applications off that origin.
+
+- Linux `sudo ... install` uses `SUDO_USER`. When installing directly as root, pass `--user <ordinary-user>`; implicit root installation is rejected. Root requires both `--user root --allow-root`; manual root execution requires `POCKETSHELL_ALLOW_ROOT=1`.
+- Non-loopback HTTP binds are rejected unless `POCKETSHELL_ALLOW_INSECURE_HTTP=1` is explicitly set (installer: `--allow-insecure-http`). Existing plaintext LAN installations must migrate to TLS or explicitly accept this development exception. Localhost HTTP upstreams behind HTTPS proxies remain supported.
+- WebSocket upgrades accept only `/ws` and the legacy `/`. Browser Origin must exactly match the advertised origin; additional trusted origins are comma-separated in `POCKETSHELL_ALLOWED_ORIGINS`. Native clients without Origin still require Noise authentication; set `POCKETSHELL_REQUIRE_ORIGIN=1` to deny them too.
+- Only exact peer addresses in `POCKETSHELL_TRUSTED_PROXIES` may supply `X-Real-IP`. The proxy must **overwrite** that header with the actual client IP (Nginx example above). Never blindly trust forwarded headers. Unknown loopback peers share only the global unauthenticated limit, avoiding a shared-IP lockout. Apply connection/rate limits at your edge as well.
+- Block `/internal/*` and `/theme/import` at the external proxy; local hooks still call loopback directly. For Nginx add `location ^~ /internal/ { return 404; }` and `location = /theme/import { return 404; }`; for Caddy add `respond /internal/* 404` and `respond /theme/import 404` before `reverse_proxy`.
+- Unauthenticated connections are capped at 64 globally and 8 per identified source, with a 5-second Noise handshake deadline and a separate 10-second pairing deadline. WS messages are capped at 65,535 bytes. Expensive authenticated RPCs share a per-device bucket of 60 requests, replenished at one per second; file-transfer chunks and terminal input are excluded.
+- The installed systemd service uses `UMask=0077`. Optional `NoNewPrivileges=yes` disables privilege escalation from terminal commands (including sudo); enable only if that matches your workflow. Avoid blindly enabling `PrivateTmp` or `ProtectHome`, which can break existing tmux sockets and working directories.
+
+**File previews:** tokens authorize an explicit list of at most 128 public assets, never an entire directory. Dotfiles, arbitrary data files, symlinks and symlink ancestors are rejected. HTML starts with scripts disabled. Enabling scripts needs confirmation and still cannot grant files outside the manifest; inspect the resource list before previewing untrusted HTML. Add CSS dependencies such as fonts/images manually if they are not direct HTML references. A selected public asset can itself contain sensitive data: the extension allowlist is not a content scanner.
+
+Preview tokens have a 2-minute idle and 10-minute absolute lifetime. Active previews renew over the authenticated channel and remint at absolute expiry; closing/hiding a preview or revoking its device invalidates its tokens. Video remint preserves playback position. Responses use `no-store`, `no-referrer`, sandbox CSP and `nosniff`. The main app uses a separate CSP with hashed bootstrap scripts; existing browser device identities remain compatible. Browser keys still live in localStorage: CSP reduces injection exposure but cannot make an already-compromised same-origin application safe.
+
+Audit records cover authentication, device revocation, file mutations, notification configuration and update outcomes. They contain operation metadata, never terminal contents, file bodies or credentials. `audit.log` rotates at 5 MiB with one retained backup; forward logs externally if you need durable retention.
+
+**Release signing:** maintainers provision an Ed25519 private key outside the repository (mode `0600`) and review its SPKI PEM public key into `agent/src/update-trust.ts` under a stable key ID. Set `POCKETSHELL_SIGNING_KEY_FILE` only on the signing machine. The release script checks the key before publication and emits `release-manifest.json` plus `release-manifest.sig`; missing or untrusted keys stop publication. Introduce new public keys in a trusted release before switching signing keys. Never accept verification keys from a downloaded release or a runtime environment override. The bootstrap `install.sh` still verifies same-release SHA256 only, so obtain that script/binary through a trusted channel or build a reviewed revision locally.
 
 ### Notifications & the local loopback endpoint
 
@@ -395,7 +415,7 @@ pocketshell-agent pair [--name <device-name>]
 pocketshell-agent devices remove <pubkey-or-fingerprint>
 ```
 
-> `pair` atomically writes the pending code to `<keyDir>/pairing.pending.json` (0600); the resident Agent reads and adopts it the next time an unregistered device attempts the handshake, and clears it on a successful pairing.
+> `pair` atomically writes the pending code to `<keyDir>/pairing.pending.json` (0600); the resident Agent reads and adopts it the next time an unregistered device attempts the handshake, and records attempts/consumption transactionally in `pairing-state.db`. Five failures exhaust the challenge across reconnections and process restarts. A new `pair` command creates a fresh challenge; stale pending files cannot reset the budget.
 
 > `devices remove` reaches a running Agent too: it polls `<keyDir>/devices.json` every 3 s, so within seconds of the removal the device loses its authorization, its live connection is closed, and its push subscriptions are dropped. No restart needed.
 

@@ -1,5 +1,6 @@
 import { AGENT_VERSION } from "./version";
 import { hasUpdate, assetNameForPlatform } from "./update-core";
+import { boundedDownload } from "./update-signature";
 
 export interface CheckResult {
   current: string;
@@ -31,17 +32,13 @@ export async function checkLatest(opts: {
 
   let data: { tag_name?: string; body?: string; published_at?: string };
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), CHECK_TIMEOUT_MS);
     // process env proxies (HTTPS_PROXY/HTTP_PROXY/NO_PROXY) are honored by Bun's
     // fetch automatically, so China networks can route through a local proxy.
-    const res = await f(`https://api.github.com/repos/${opts.repo}/releases/latest`, {
-      headers: { "User-Agent": `pocketshell-agent/${current}`, Accept: "application/vnd.github+json" },
-      signal: ctrl.signal,
-    });
-    clearTimeout(timer);
-    if (!res.ok) return { ...base, reason: "no_release_info" };
-    data = await res.json();
+    const bytes = await boundedDownload(`https://api.github.com/repos/${opts.repo}/releases/latest`, 1024 * 1024, f, CHECK_TIMEOUT_MS);
+    data = JSON.parse(Buffer.from(bytes).toString("utf8"));
+    if (!data || typeof data.tag_name !== "string" || !/^v?\d+\.\d+\.\d+$/.test(data.tag_name)
+      || (data.body != null && typeof data.body !== "string")
+      || (data.published_at != null && typeof data.published_at !== "string")) return { ...base, reason: "no_release_info" };
   } catch {
     return { ...base, reason: "no_release_info" };
   }

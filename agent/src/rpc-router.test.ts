@@ -1,5 +1,16 @@
 import { test, expect } from "bun:test";
-import { parse, compressHistory, RPC_TABLE } from "./rpc-router";
+import { parse, compressHistory, RPC_TABLE, dispatchRpc, type RpcContext } from "./rpc-router";
+
+test("configuration audit records operation metadata without webhook credentials", () => {
+  const events: unknown[] = [];
+  const ctx = { config: { audit: { log: (e: unknown) => events.push(e) } }, devicePub: "device-public-key",
+    notify: { setConfig: () => {} }, sendResult: () => {}, sendError: () => {} } as unknown as RpcContext;
+  dispatchRpc(ctx, "notify.setConfig", { config: { webhooks: [{ url: "https://private.invalid", secret: "DO_NOT_LOG" }] } });
+  expect(events).toHaveLength(1);
+  expect(JSON.stringify(events)).toContain('"method":"notify.setConfig"');
+  expect(JSON.stringify(events)).not.toContain("DO_NOT_LOG");
+  expect(JSON.stringify(events)).not.toContain("private.invalid");
+});
 
 test("parse.gitReview 解析 worktree 三档", () => {
   expect(parse.gitReview({ cwd: "/p", scope: { kind: "worktree", stage: "staged" } }))

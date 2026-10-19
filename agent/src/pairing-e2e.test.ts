@@ -18,6 +18,48 @@ import { writePendingPairing } from "./pairing";
 
 const PRO = Buffer.from("pocketshell-v1");
 
+test("disk pairing budget cannot be resurrected by a sixth real Noise connection", async () => {
+  const keyDir = mkdtempSync(join(tmpdir(), "ps-pair-budget-"));
+  const cfg = loadConfig({ POCKETSHELL_KEY_DIR: keyDir });
+  const srv = startServer({ port: 0, config: cfg });
+  const code = "ZZZZ7777";
+  writePendingPairing(keyDir, { code, mintedAt: Date.now() + 1000, expiresAt: Date.now() + 300000, maxAttempts: 5 });
+  try {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const kp = DH.generateKeyPair();
+      const c = connectClient(srv.port, cfg.identity.publicKey, kp);
+      await c.open();
+      const first = await c.next();
+      if (attempt < 5) {
+        expect(first).toEqual({ established: true });
+        c.send({ type: "pair", code: "WRONG", deviceName: "regression" });
+        expect((await c.next()).code).toBe("pair_failed");
+      } else {
+        expect(first).toEqual({ closed: true });
+      }
+      expect(cfg.registry.has(c.clientPubB64)).toBe(false);
+      c.close();
+    }
+  } finally { srv.stop(); rmSync(keyDir, { recursive: true, force: true }); }
+});
+
+test("WebSocket ingress refuses unexpected paths and browser origins; idle handshake expires", async () => {
+  const keyDir = mkdtempSync(join(tmpdir(), "ps-ingress-"));
+  const cfg = loadConfig({ POCKETSHELL_KEY_DIR: keyDir });
+  const srv = startServer({ port: 0, config: cfg });
+  const base = `http://127.0.0.1:${srv.port}`;
+  try {
+    for (const [path, origin] of [["/other", base], ["/ws", "https://untrusted.test"], ["/ws", "null"]]) {
+      const r = await fetch(base + path, { headers: { upgrade: "websocket", origin } });
+      expect(r.status).toBe(403);
+    }
+    const ws = new WebSocket(base.replace("http", "ws") + "/ws");
+    const started = Date.now();
+    await new Promise<void>(resolve => { ws.onclose = () => resolve(); });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(4500);
+  } finally { srv.stop(); rmSync(keyDir, { recursive: true, force: true }); }
+}, 10000);
+
 type ClientKeys = { publicKey: Uint8Array; secretKey: Uint8Array };
 
 // A real IK initiator over a real WebSocket, standing in for the app. Reuses a

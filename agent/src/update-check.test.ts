@@ -2,8 +2,7 @@ import { test, expect } from "bun:test";
 import { checkLatest } from "./update-check";
 
 function fakeFetch(status: number, json: unknown): typeof fetch {
-  return (async () =>
-    ({ ok: status >= 200 && status < 300, status, json: async () => json }) as Response) as unknown as typeof fetch;
+  return (async () => Response.json(json, { status })) as unknown as typeof fetch;
 }
 
 test("disabled repo returns disabled/no-apply", async () => {

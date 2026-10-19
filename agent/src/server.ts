@@ -21,7 +21,7 @@ import { createResponderChannel, type SecureChannel } from "./secure-channel";
 import { resolveStatic, contentEtag, isNotModified } from "./static-serve";
 import { brandManifest, brandHtml } from "./instance-brand";
 import { ASSETS } from "./embedded-manifest";
-import { createPairing, readPendingPairing, clearPendingPairing, shouldAdoptDiskPairing } from "./pairing";
+import { persistentPairing, readPendingPairing, shouldAdoptDiskPairing } from "./pairing";
 import { isLocalAddr } from "./net-addr";
 import { watchRegistryFile, readStamp } from "./registry-watch";
 import { PreviewTokens } from "./preview-service";
@@ -42,6 +42,9 @@ import { AI_TOOLS, type AiTool } from "./ai-context";
 import { dispatchRpc } from "./rpc-router";
 import { formatDiagReport } from "./diag-report";
 import { runCli } from "./cli-entry";
+import { DEFAULT_INGRESS, originAllowed, requestClientIp } from "./ingress-security";
+import { RELEASE_PUBLIC_KEYS } from "./update-trust";
+import { appSecurityHeaders } from "./app-security";
 
 // 入参可选：调用点的 `tool` 来自解析后的 JSON body（`tool?: string`）。收窄成
 // 必填 string 会逼调用点加非空断言，而这里本来就该把 undefined 判成「不是 AI
@@ -137,12 +140,7 @@ export function startServer(deps: Deps = {}) {
       memoryMintedAt: pairingMintedAt,
       diskMintedAt: rec.mintedAt ?? 0,
     })) return;
-    config.pairing = createPairing({
-      code: rec.code,
-      ttlMs: Math.max(0, rec.expiresAt - Date.now()),
-      maxAttempts: rec.maxAttempts,
-      now: () => Date.now(),
-    });
+    config.pairing = persistentPairing(config.keyDir, rec);
     config.pairingMode = true;
     pairingMintedAt = rec.mintedAt ?? Date.now();
   };
@@ -164,6 +162,10 @@ export function startServer(deps: Deps = {}) {
   const pairTimeoutMs = deps.pairTimeoutMs ?? 10_000;
   const assets = deps.assets ?? ASSETS;
   const assetKeys = new Set(Object.keys(assets));
+  let securityHeaders: Promise<Record<string, string>> | undefined;
+  const getSecurityHeaders = () => securityHeaders ??= (async () => appSecurityHeaders(
+    assets["/index.html"] ? await Bun.file(assets["/index.html"]).text() : "", config.advertise,
+  ))();
   // Content-addressed validators: hash each served file once (lazily), then
   // reuse for If-None-Match checks. The hashed body is the served variant
   // itself, so .br/.gz variants get their own ETags automatically.
@@ -190,6 +192,7 @@ export function startServer(deps: Deps = {}) {
     remoteStatic: string | null;
     ip: string;
     pairTimer?: ReturnType<typeof setTimeout>;
+    handshakeTimer?: ReturnType<typeof setTimeout>;
     // A3: sessions this conn receives output/exit for. attach adds, detach
     // removes; old clients never detach, so their set only grows (≈ old
     // broadcast behaviour, minus sessions they never attached to).
@@ -492,6 +495,7 @@ export function startServer(deps: Deps = {}) {
   const revokeEffects = (pub: string, via: string) => {
     config.audit.log({ event: "revoke", pub, ip: via });
     for (const c of conns.values()) if (c.remoteStatic === pub) c.ws.close();
+    previewTokens.revokeDevice(pub);
     notify.removeSubsForDevice(pub);
   };
 
@@ -535,6 +539,7 @@ export function startServer(deps: Deps = {}) {
     const cache = readCache(config.keyDir);
     const gate = applyGate(config.update.repo, cache, applying, config.update.official);
     if (!gate.started) return gate;
+    if (!Object.keys(RELEASE_PUBLIC_KEYS).length) return { started: false, reason: "no_trusted_release_key" };
     applying = true;
     const tag = `v${gate.latest}`;
     const emit = (phase: Phase, extra?: { pct?: number; message?: string }) =>
@@ -569,6 +574,7 @@ export function startServer(deps: Deps = {}) {
           throw new Error(`smoke check failed: got "${out.trim()}", want "${gate.latest}"`);
         }
         emit("applying");
+        config.audit.log({ event: "operation", detail: { method: "update.apply", outcome: "verified", version: gate.latest } });
         swapAndRestart(newPath, target, () => {
           emit("restarting");
           terminal.sizeControl?.dispose();
@@ -576,6 +582,7 @@ export function startServer(deps: Deps = {}) {
         });
       } catch (e) {
         applying = false;
+        config.audit.log({ event: "operation", detail: { method: "update.apply", outcome: "failure" } });
         emit("error", { message: e instanceof Error ? e.message : String(e) });
       }
     })();
@@ -589,7 +596,7 @@ export function startServer(deps: Deps = {}) {
     conn.ready = true;
     if (conn.pairTimer) clearTimeout(conn.pairTimer);
     sendSecure(conn, { type: "paired", ok: true });
-    clearPendingPairing(config.keyDir); // req 7-1: consume any disk pending too
+    // Persisted consumed state rejects reuse; do not delete a newer CLI request.
     config.audit.log({ event: "pair_ok", pub: conn.remoteStatic, ip: conn.ip });
   };
 
@@ -838,6 +845,7 @@ export function startServer(deps: Deps = {}) {
         if (removed) {
           config.audit.log({ event: "revoke", pub: msg.pubKey, ip: conn.ip });
           for (const c of conns.values()) if (c.remoteStatic === msg.pubKey) c.ws.close();
+          previewTokens.revokeDevice(msg.pubKey);
           notify.removeSubsForDevice(msg.pubKey);
         }
         break;
@@ -947,8 +955,12 @@ export function startServer(deps: Deps = {}) {
 
   const onOpen = (ws: ServerWebSocket<unknown>, ip = "", factory = channelFactory) => {
     if (ip && config.rateLimiter.isLocked(ip)) { ws.close(); return; }
+    const pending = [...conns.values()].filter(c => !c.ready);
+    if (pending.length >= 64 || (ip && pending.filter(c => c.ip === ip).length >= 8)) { ws.close(); return; }
     const conn: Conn = { ws, channel: factory(), ready: false, pending: false, remoteStatic: null, ip, subscriptions: new Set(), needsResyncSessions: new Set() };
     conns.set(ws, conn);
+    conn.handshakeTimer = setTimeout(() => { if (!conn.ready && !conn.pending) ws.close(); }, 5000);
+    conn.handshakeTimer.unref();
     const m1 = conn.channel.start();
     if (m1) ws.send(m1); // responder returns null; kept for symmetry
   };
@@ -956,6 +968,8 @@ export function startServer(deps: Deps = {}) {
   const onMessage = (ws: ServerWebSocket<unknown>, raw: Uint8Array | string) => {
     const conn = conns.get(ws);
     if (!conn) return;
+    const frameLength = typeof raw === "string" ? Buffer.byteLength(raw) : raw.byteLength;
+    if (frameLength > ((!conn.ready && !conn.pending) ? 512 : 65535)) { ws.close(); return; }
     const frame = typeof raw === "string" ? new Uint8Array(Buffer.from(raw, "utf8")) : new Uint8Array(raw as Uint8Array);
     const r = conn.channel.receive(frame);
     if (r.status === "fail") {
@@ -975,6 +989,7 @@ export function startServer(deps: Deps = {}) {
     if (r.status === "handshake") {
       if (r.reply) ws.send(r.reply);
       if (r.established) {
+        clearTimeout(conn.handshakeTimer);
         conn.remoteStatic = r.remoteStatic ?? null;
         if (r.pending) {
           conn.pending = true;
@@ -1038,13 +1053,20 @@ export function startServer(deps: Deps = {}) {
   };
 
   const tlsMaterial = resolveTlsMaterial(config.keyDir, config.tls);
-  const server = Bun.serve({
+  const server = Bun.serve<{ ip: string }>({
     hostname: config.listen.host,
     port: deps.port ?? config.listen.port,
     tls: tlsMaterial ?? undefined,
     async fetch(req, srv) {
-      if (srv.upgrade(req)) return;
       const url = new URL(req.url);
+      if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+        const policy = config.ingress ?? DEFAULT_INGRESS;
+        if (!["/", "/ws"].includes(url.pathname) || !originAllowed(req, policy, config.advertise)) return new Response("Forbidden", { status: 403 });
+        const ip = requestClientIp(req, srv.requestIP(req)?.address ?? "", policy.trustedProxies);
+        if (ip && config.rateLimiter.isLocked(ip)) return new Response("Too many attempts", { status: 429 });
+        if (srv.upgrade(req, { data: { ip } })) return;
+        return new Response("Bad upgrade", { status: 400 });
+      }
       if (url.pathname === "/internal/notify" && req.method === "POST") {
         const ip = srv.requestIP(req)?.address ?? "";
         if (!isLocalAddr(ip)) return new Response("Forbidden", { status: 403 });
@@ -1108,6 +1130,7 @@ export function startServer(deps: Deps = {}) {
         assetKeys,
         req.headers.get("accept-encoding") ?? "",
       );
+      Object.assign(r.headers, await getSecurityHeaders());
       // 实例身份：manifest 与 index.html 的名称字段按 instanceName 改写。**只有
       // 设了实例名才走这条分支** —— 不设时必须原样落到下面那条 Bun.file 路径，
       // 否则 content-type 会从 Bun 的推断值漂到这里手写的 MIME（html 那条差一个
@@ -1156,9 +1179,13 @@ export function startServer(deps: Deps = {}) {
       return new Response("Not found", { status: 404 });
     },
     websocket: {
-      open(ws) { onOpen(ws, (ws as any).remoteAddress ?? ""); },
+      maxPayloadLength: 65535,
+      idleTimeout: 120,
+      open(ws) { onOpen(ws, (ws.data as { ip?: string } | undefined)?.ip ?? ""); },
       close(ws) {
         const conn = conns.get(ws);
+        clearTimeout(conn?.handshakeTimer);
+        clearTimeout(conn?.pairTimer);
         if (conn) terminal.sizeControl?.grace(sizeActor(conn));
         conns.delete(ws);
         // Reclaim this device's preview tokens once it has no live socket left.
@@ -1198,9 +1225,11 @@ export function startServer(deps: Deps = {}) {
     url: server.url,
     stop() {
       clearInterval(sizeTimer);
+      for (const c of conns.values()) { clearTimeout(c.handshakeTimer); clearTimeout(c.pairTimer); }
       clearInterval(pushTimer);
       clearInterval(sweepTimer);
       clearInterval(previewSweepTimer);
+      previewTokens.clear();
       registryWatch.stop();
       batcher.clearAll();
       terminal.dispose();

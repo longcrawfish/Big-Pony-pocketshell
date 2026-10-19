@@ -130,12 +130,12 @@ test("loadConfig priority: env > agent.json > default", () => {
   writeFileSync(join(keyDir, "agent.json"),
     JSON.stringify({ host: "10.0.0.9", port: 9001, advertise: "wss://from-file" }));
   // no env override -> file wins
-  const fromFile = loadConfig({ POCKETSHELL_KEY_DIR: keyDir });
+  const fromFile = loadConfig({ POCKETSHELL_KEY_DIR: keyDir, POCKETSHELL_ALLOW_INSECURE_HTTP: "1" });
   expect(fromFile.listen.host).toBe("10.0.0.9");
   expect(fromFile.listen.port).toBe(9001);
   expect(fromFile.advertise).toBe("wss://from-file");
   // env override -> env wins
-  const fromEnv = loadConfig({ POCKETSHELL_KEY_DIR: keyDir, POCKETSHELL_HOST: "0.0.0.0", POCKETSHELL_ADVERTISE: "wss://from-env" });
+  const fromEnv = loadConfig({ POCKETSHELL_ALLOW_INSECURE_HTTP: "1", POCKETSHELL_KEY_DIR: keyDir, POCKETSHELL_HOST: "0.0.0.0", POCKETSHELL_ADVERTISE: "wss://from-env" });
   expect(fromEnv.listen.host).toBe("0.0.0.0");
   expect(fromEnv.advertise).toBe("wss://from-env");
   rmSync(keyDir, { recursive: true, force: true });
@@ -291,7 +291,7 @@ test("env POCKETSHELL_ADVERTISE overrides agent.json (why tunnel setup rewrites 
     JSON.stringify({ advertise: "wss://from-file.example", host: "127.0.0.1", port: 8722 }),
   );
 
-  const fromFile = loadConfig({ POCKETSHELL_KEY_DIR: keyDir });
+  const fromFile = loadConfig({ POCKETSHELL_KEY_DIR: keyDir, POCKETSHELL_ALLOW_INSECURE_HTTP: "1" });
   expect(resolveAdvertise(fromFile)).toBe("wss://from-file.example");
 
   const fromEnv = loadConfig({

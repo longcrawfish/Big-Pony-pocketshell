@@ -47,7 +47,7 @@ export async function runCliDevices(argv: string[]): Promise<number> {
   // action.cmd === "pair"
   const now = Date.now();
   const code = generatePairingCode();
-  writePendingPairing(cfg.keyDir, { code, expiresAt: now + 300_000, maxAttempts: 5, mintedAt: now });
+  writePendingPairing(cfg.keyDir, { challengeId: crypto.randomUUID(), code, expiresAt: now + 300_000, maxAttempts: 5, mintedAt: now });
   const advertise = resolveAdvertise(cfg);
   console.log(buildPairingString(cfg.identity.publicKey, advertise, code));
   console.log("\nPairing code valid for 300s. Paste the string above into the app; a running agent picks it up automatically.");

@@ -27,15 +27,16 @@
     {#if info.notes}<pre class="notes">{info.notes}</pre>{/if}
 
     {#if phase === null}
+      {#if !info.canApply}<div class="phase">{$t("update.manualRequired")}</div>{/if}
       <div class="btns">
         <button onclick={onCancel}>{$t("update.cancel")}</button>
-        <button class="primary" onclick={onConfirm}>{$t("update.confirm")}</button>
+        {#if info.canApply}<button class="primary" onclick={onConfirm}>{$t("update.confirm")}</button>{/if}
       </div>
     {:else if phase === "error"}
       <div class="phase err">{$t("update.phase.error")}{message ? `: ${message}` : ""}</div>
       <div class="btns">
         <button onclick={onCancel}>{$t("update.close")}</button>
-        <button class="primary" onclick={onConfirm}>{$t("update.retry")}</button>
+        {#if info.canApply}<button class="primary" onclick={onConfirm}>{$t("update.retry")}</button>{/if}
       </div>
     {:else}
       <div class="phase">{$t(phaseLabelKey(phase))}{typeof pct === "number" ? ` ${pct}%` : ""}</div>

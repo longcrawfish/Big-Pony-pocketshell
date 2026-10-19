@@ -1,12 +1,21 @@
-// Token-scoped preview file access. A token authorizes reads under one base
-// directory subtree; delivered over the Noise WS, consumed by the HTTP
+// Token-scoped preview file access. A token authorizes explicit public files
+// relative to one base; delivered over the Noise WS, consumed by the HTTP
 // /preview route. Pure/injectable so the table logic is unit-testable.
 import { randomBytes } from "node:crypto";
-import { resolve, join, sep, extname } from "node:path";
+import { resolve, join, sep, extname, isAbsolute } from "node:path";
+import { realpathSync, closeSync } from "node:fs";
+import { openPreviewFile } from "./preview-open";
 
-interface Entry { base: string; dev: string; lastUsed: number }
+interface Entry { base: string; dev: string; lastUsed: number; created: number; files: Set<string>; scripts: boolean }
 
-const DEFAULT_IDLE_MS = 30 * 60 * 1000; // sliding idle expiry backstop
+const DEFAULT_IDLE_MS = 2 * 60 * 1000;
+const MAX_LIFE_MS = 10 * 60 * 1000;
+const PUBLIC_EXT = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".bmp", ".ico", ".svg", ".html", ".htm", ".css", ".js", ".mjs", ".woff", ".woff2", ".ttf", ".mp4", ".m4v", ".webm", ".mov", ".ogv"]);
+
+export function previewPathAllowed(path: string): boolean {
+  return !isAbsolute(path) && !path.includes("\0") && !path.includes("\\")
+    && path.split("/").every(p => !!p && !p.startsWith(".")) && PUBLIC_EXT.has(extname(path).toLowerCase());
+}
 
 export class PreviewTokens {
   private map = new Map<string, Entry>();
@@ -17,28 +26,48 @@ export class PreviewTokens {
     this.gen = opts.gen ?? (() => randomBytes(24).toString("base64url"));
   }
 
-  mint(base: string, dev: string, now: number): string {
+  mint(base: string, dev: string, now: number, opts: { files: string[]; scripts?: boolean } = { files: [] }): string {
+    this.sweep(now);
+    if (this.map.size >= 512 || [...this.map.values()].filter(e => e.dev === dev).length >= 32) throw new Error("preview quota exceeded");
+    if (!Array.isArray(opts.files) || !opts.files.length || opts.files.length > 128 || opts.files.some(p => typeof p !== "string" || !previewPathAllowed(p))) throw new Error("preview requires an explicit public asset list");
+    const root = realpathSync(base);
+    // Reject dangling links, special files and symlinks before granting access.
+    for (const p of opts.files) closeSync(openPreviewFile(join(root, p)));
     const token = this.gen();
-    this.map.set(token, { base: resolve(base), dev, lastUsed: now });
+    this.map.set(token, { base: root, dev, lastUsed: now, created: now, files: new Set(opts.files), scripts: opts.scripts === true });
     return token;
   }
 
   resolve(token: string, relpath: string, now: number): string | null {
     const e = this.map.get(token);
     if (!e) return null;
-    if (now - e.lastUsed > this.idleMs) { this.map.delete(token); return null; }
+    if (now - e.lastUsed > this.idleMs || now - e.created > MAX_LIFE_MS) { this.map.delete(token); return null; }
+    if (!e.files.has(relpath)) return null;
     const abs = resolve(join(e.base, relpath));
     if (abs !== e.base && !abs.startsWith(e.base + sep)) return null; // traversal guard
     e.lastUsed = now;
     return abs;
   }
 
+  scripts(token: string): boolean { return this.map.get(token)?.scripts === true; }
+
+  renew(token: string, dev: string, now: number): boolean {
+    this.sweep(now);
+    const e = this.map.get(token);
+    if (!e || e.dev !== dev) return false;
+    e.lastUsed = now;
+    return true;
+  }
+
+  revoke(token: string, dev: string): void { if (this.map.get(token)?.dev === dev) this.map.delete(token); }
+  clear(): void { this.map.clear(); }
+
   revokeDevice(dev: string): void {
     for (const [t, e] of this.map) if (e.dev === dev) this.map.delete(t);
   }
 
   sweep(now: number): void {
-    for (const [t, e] of this.map) if (now - e.lastUsed > this.idleMs) this.map.delete(t);
+    for (const [t, e] of this.map) if (now - e.lastUsed > this.idleMs || now - e.created > MAX_LIFE_MS) this.map.delete(t);
   }
 }
 

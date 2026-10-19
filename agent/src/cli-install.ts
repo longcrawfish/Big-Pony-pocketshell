@@ -4,6 +4,8 @@
 // install-runner.ts. Mirrors the split already used by cli-devices.ts.
 
 export interface InstallOpts {
+  allowRoot?: boolean;
+  allowInsecureHttp?: boolean;
   advertise: string;
   name?: string;
   user?: string;
@@ -26,6 +28,8 @@ export const INSTALL_USAGE = [
   "  --user       User the service runs as. Defaults to whoever invoked sudo on Linux, or the current user on macOS.",
   "  --host       Bind address, default 127.0.0.1 (keep it behind a reverse proxy; use 0.0.0.0 for a phone connecting straight over the LAN).",
   "  --port       Port, default 8722.",
+  "  --allow-root Explicitly allow a root service (also requires --user root).",
+  "  --allow-insecure-http Development only: allow plaintext LAN/public HTTP.",
 ].join("\n");
 
 /** Rejects values that could break out of a unit file line or corrupt a plist. */
@@ -48,6 +52,7 @@ export function parseInstallArgv(argv: string[]): InstallAction {
   const raw: Record<string, string> = {};
   for (let i = 0; i < rest.length; i++) {
     const flag = rest[i];
+    if (flag === "--allow-root" || flag === "--allow-insecure-http") { raw[flag] = "1"; continue; }
     if (!NEEDS_VALUE.has(flag)) {
       return { cmd: "error", message: `Unknown flag: ${flag}\n\n${INSTALL_USAGE}` };
     }
@@ -81,6 +86,12 @@ export function parseInstallArgv(argv: string[]): InstallAction {
       message: `--advertise must start with ws:// or wss:// (got: ${advertise}).\nUse wss:// for an HTTPS site, ws:// for plain HTTP.`,
     };
   }
+  let addr: URL;
+  try { addr = new URL(advertise); } catch { return { cmd: "error", message: "Invalid --advertise URL" }; }
+  if ((addr.protocol === "ws:" && !["127.0.0.1", "localhost", "[::1]"].includes(addr.hostname)
+      || (raw["--host"] && !["127.0.0.1", "localhost", "::1"].includes(raw["--host"]))) && !raw["--allow-insecure-http"]) {
+    return { cmd: "error", message: "Use HTTPS/WSS with a loopback listener. Plaintext exposure requires --allow-insecure-http (development only)." };
+  }
 
   let port = 8722;
   if (raw["--port"] !== undefined) {
@@ -94,6 +105,8 @@ export function parseInstallArgv(argv: string[]): InstallAction {
   return {
     cmd: "install",
     opts: {
+      ...(raw["--allow-root"] ? { allowRoot: true } : {}),
+      ...(raw["--allow-insecure-http"] ? { allowInsecureHttp: true } : {}),
       advertise,
       name: raw["--name"],
       user: raw["--user"],
@@ -151,6 +164,8 @@ function buildEnv(opts: InstallOpts, keyDir: string): Record<string, string> {
   // Absent --name must produce NO key at all (project constraint: unset means
   // byte-for-byte identical behaviour to before the instance-name feature).
   if (opts.name) env.POCKETSHELL_INSTANCE_NAME = opts.name;
+  if (opts.allowInsecureHttp) env.POCKETSHELL_ALLOW_INSECURE_HTTP = "1";
+  if (opts.allowRoot) env.POCKETSHELL_ALLOW_ROOT = "1";
   return env;
 }
 
@@ -172,7 +187,10 @@ export function resolvePlan(i: ResolveInput): { ok: true; plan: InstallPlan } | 
     if (i.euid !== 0) {
       return { ok: false, message: `install needs root (it writes ${LINUX_BIN_DIR}, /etc/systemd/system and ${LINUX_SYMLINK}).\nRun it as: sudo pocketshell-agent install …` };
     }
-    const user = i.opts.user ?? i.env.SUDO_USER ?? "root";
+    const user = i.opts.user ?? i.env.SUDO_USER;
+    if (!user || (user === "root" && !(i.opts.user === "root" && i.opts.allowRoot))) {
+      return { ok: false, message: "Specify a non-root --user. A root service requires --user root --allow-root." };
+    }
     const home = i.homeOf(user);
     if (!home) {
       return { ok: false, message: `No such user on this system: "${user}". Pass --user with an existing account.` };
@@ -252,6 +270,7 @@ export function renderSystemdUnit(plan: InstallPlan): string {
     ...envLines,
     "Restart=always",
     "RestartSec=3",
+    "UMask=0077",
     "",
     "[Install]",
     "WantedBy=multi-user.target",

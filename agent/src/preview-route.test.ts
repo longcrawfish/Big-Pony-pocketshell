@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { PreviewTokens } from "./preview-service";
 import { buildPreviewResponse } from "./server-preview";
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -22,7 +22,7 @@ function fxVideo() {
 test("valid token serves file with hardening headers", async () => {
   const dir = fx();
   const pt = new PreviewTokens();
-  const tok = pt.mint(dir, "devA", 0);
+  const tok = pt.mint(dir, "devA", 0, { files: readdirSync(dir).filter(p => p.includes(".")) });
   const res = buildPreviewResponse(pt, new URL(`http://x/preview/${tok}/a.png`), 0);
   expect(res.status).toBe(200);
   expect(res.headers.get("content-type")).toBe("image/png");
@@ -35,7 +35,7 @@ test("valid token serves file with hardening headers", async () => {
   expect(res.headers.get("access-control-allow-origin")).toBeNull();
   // Defence-in-depth headers: CSP sandbox neutralises a top-level HTML load,
   // nosniff stops MIME sniffing octet-stream into an executable document.
-  expect(res.headers.get("content-security-policy")).toBe("sandbox allow-scripts");
+  expect(res.headers.get("content-security-policy")).toContain("sandbox;");
   expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   expect(await res.text()).toBe("PNGDATA");
 });
@@ -49,7 +49,7 @@ test("bad token → 403", () => {
 test("malformed percent-escape → 400 (not 500)", () => {
   const dir = fx();
   const pt = new PreviewTokens();
-  const tok = pt.mint(dir, "devA", 0);
+  const tok = pt.mint(dir, "devA", 0, { files: readdirSync(dir).filter(p => p.includes(".")) });
   const res = buildPreviewResponse(pt, new URL(`http://x/preview/${tok}/%ZZ`), 0);
   expect(res.status).toBe(400);
 });
@@ -57,7 +57,7 @@ test("malformed percent-escape → 400 (not 500)", () => {
 test("traversal → 403", () => {
   const dir = fx();
   const pt = new PreviewTokens();
-  const tok = pt.mint(dir, "devA", 0);
+  const tok = pt.mint(dir, "devA", 0, { files: readdirSync(dir).filter(p => p.includes(".")) });
   const res = buildPreviewResponse(pt, new URL(`http://x/preview/${tok}/..%2f..%2fetc%2fpasswd`), 0);
   expect(res.status).toBe(403);
 });
@@ -65,7 +65,7 @@ test("traversal → 403", () => {
 test("视频扩展名给出正确 content-type", async () => {
   const dir = fxVideo();
   const pt = new PreviewTokens();
-  const tok = pt.mint(dir, "devA", 0);
+  const tok = pt.mint(dir, "devA", 0, { files: readdirSync(dir).filter(p => p.includes(".")) });
   const res = buildPreviewResponse(pt, new URL(`http://x/preview/${tok}/v.mp4`), 0);
   expect(res.status).toBe(200);
   expect(res.headers.get("content-type")).toBe("video/mp4");
@@ -74,7 +74,7 @@ test("视频扩展名给出正确 content-type", async () => {
 test("无 Range 时返回 200 且带 accept-ranges", async () => {
   const dir = fxVideo();
   const pt = new PreviewTokens();
-  const tok = pt.mint(dir, "devA", 0);
+  const tok = pt.mint(dir, "devA", 0, { files: readdirSync(dir).filter(p => p.includes(".")) });
   const res = buildPreviewResponse(pt, new URL(`http://x/preview/${tok}/v.mp4`), 0, null);
   expect(res.status).toBe(200);
   expect(res.headers.get("accept-ranges")).toBe("bytes");
@@ -84,7 +84,7 @@ test("无 Range 时返回 200 且带 accept-ranges", async () => {
 test("Range 请求返回 206 + content-range + 正确切片", async () => {
   const dir = fxVideo();
   const pt = new PreviewTokens();
-  const tok = pt.mint(dir, "devA", 0);
+  const tok = pt.mint(dir, "devA", 0, { files: readdirSync(dir).filter(p => p.includes(".")) });
   const res = buildPreviewResponse(pt, new URL(`http://x/preview/${tok}/v.mp4`), 0, "bytes=10-19");
   expect(res.status).toBe(206);
   expect(res.headers.get("content-range")).toBe("bytes 10-19/1000");
@@ -95,10 +95,10 @@ test("Range 请求返回 206 + content-range + 正确切片", async () => {
 test("206 响应同样带全部安全头", async () => {
   const dir = fxVideo();
   const pt = new PreviewTokens();
-  const tok = pt.mint(dir, "devA", 0);
+  const tok = pt.mint(dir, "devA", 0, { files: readdirSync(dir).filter(p => p.includes(".")) });
   const res = buildPreviewResponse(pt, new URL(`http://x/preview/${tok}/v.mp4`), 0, "bytes=0-9");
   expect(res.status).toBe(206);
-  expect(res.headers.get("content-security-policy")).toBe("sandbox allow-scripts");
+  expect(res.headers.get("content-security-policy")).toContain("sandbox;");
   expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   expect(res.headers.get("cache-control")).toBe("no-store");
   expect(res.headers.get("referrer-policy")).toBe("no-referrer");
@@ -108,7 +108,7 @@ test("206 响应同样带全部安全头", async () => {
 test("越界 Range 返回 416 且带 content-range", async () => {
   const dir = fxVideo();
   const pt = new PreviewTokens();
-  const tok = pt.mint(dir, "devA", 0);
+  const tok = pt.mint(dir, "devA", 0, { files: readdirSync(dir).filter(p => p.includes(".")) });
   const res = buildPreviewResponse(pt, new URL(`http://x/preview/${tok}/v.mp4`), 0, "bytes=5000-6000");
   expect(res.status).toBe(416);
   expect(res.headers.get("content-range")).toBe("bytes */1000");
@@ -117,7 +117,7 @@ test("越界 Range 返回 416 且带 content-range", async () => {
 test("畸形 Range 当作无 Range，返回完整 200", async () => {
   const dir = fxVideo();
   const pt = new PreviewTokens();
-  const tok = pt.mint(dir, "devA", 0);
+  const tok = pt.mint(dir, "devA", 0, { files: readdirSync(dir).filter(p => p.includes(".")) });
   const res = buildPreviewResponse(pt, new URL(`http://x/preview/${tok}/v.mp4`), 0, "garbage");
   expect(res.status).toBe(200);
   expect((await res.text()).length).toBe(1000);
@@ -126,7 +126,7 @@ test("畸形 Range 当作无 Range，返回完整 200", async () => {
 test("Range 请求仍受 token 与穿越保护约束", () => {
   const dir = fxVideo();
   const pt = new PreviewTokens();
-  const tok = pt.mint(dir, "devA", 0);
+  const tok = pt.mint(dir, "devA", 0, { files: readdirSync(dir).filter(p => p.includes(".")) });
   expect(buildPreviewResponse(pt, new URL(`http://x/preview/badtoken/v.mp4`), 0, "bytes=0-9").status).toBe(403);
   expect(buildPreviewResponse(pt, new URL(`http://x/preview/${tok}/../etc/passwd`), 0, "bytes=0-9").status).toBe(403);
 });
@@ -137,9 +137,10 @@ test("Range 请求仍受 token 与穿越保护约束", () => {
 test("请求目录返回 404，且 body 可安全读取", async () => {
   const dir = mkdtempSync(join(tmpdir(), "pvd-"));
   mkdirSync(join(dir, "sub"));
+  writeFileSync(join(dir, "a.png"), "x");
   const pt = new PreviewTokens();
-  const tok = pt.mint(dir, "devA", 0);
+  const tok = pt.mint(dir, "devA", 0, { files: readdirSync(dir).filter(p => p.includes(".")) });
   const res = buildPreviewResponse(pt, new URL(`http://x/preview/${tok}/sub`), 0);
-  expect(res.status).toBe(404);
+  expect(res.status).toBe(403);
   await res.text(); // 不得抛异常
 });

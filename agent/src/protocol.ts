@@ -76,8 +76,7 @@ export type ClientMsg =
   //
   // acceptEnc: 客户端声明它认得哪些响应编码（目前只有 "gzip"）。**缺省 = 一律不压**，
   // 这是向后兼容的全部机制：老客户端不发这个字段，新 agent 就永远给它发未压缩的
-  // response 帧。放顶层而非塞进 params 是安全的——decodeClient 是裸 JSON.parse
-  // 无字段校验，handleClient 的 case "rpc" 只解构它认识的字段。
+  // response 帧。放顶层而非塞进 params；未知扩展字段保持兼容。
   | { type: "rpc"; id: string; method: string; params?: unknown; acceptEnc?: string[] };
 
 export type ServerMsg =
@@ -147,7 +146,13 @@ export function encode(msg: ClientMsg | ServerMsg): string {
 }
 
 export function decodeClient(raw: string): ClientMsg {
-  return JSON.parse(raw) as ClientMsg;
+  const m = JSON.parse(raw);
+  if (!m || typeof m !== "object" || Array.isArray(m) || typeof m.type !== "string") throw new Error("invalid message");
+  if (m.type === "pair" && (typeof m.code !== "string" || m.code.length > 128
+    || typeof m.deviceName !== "string" || m.deviceName.length > 256)) throw new Error("invalid pairing message");
+  if (m.type === "rpc" && (typeof m.id !== "string" || m.id.length > 128
+    || typeof m.method !== "string" || m.method.length > 128)) throw new Error("invalid RPC message");
+  return m as ClientMsg;
 }
 
 export function decodeServer(raw: string): ServerMsg {

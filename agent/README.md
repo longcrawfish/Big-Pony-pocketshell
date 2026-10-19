@@ -57,12 +57,14 @@ POCKETSHELL_ADVERTISE=wss://xxx.trycloudflare.com ./pocketshell-agent-linux-x64
 
 ### 3) 已在用 tailscale
 
-手机也加入同一 tailnet，直接用机器的 tailscale IP：
+建议使用 Tailscale Serve 提供 HTTPS；下面的 IP 直连仅用于明确接受明文网页风险的可信开发网络：
 
 ```bash
-POCKETSHELL_HOST=0.0.0.0 POCKETSHELL_PORT=8722 \
+POCKETSHELL_HOST=0.0.0.0 POCKETSHELL_PORT=8722 POCKETSHELL_ALLOW_INSECURE_HTTP=1 \
 POCKETSHELL_ADVERTISE=ws://100.x.x.x:8722 ./pocketshell-agent-linux-x64
 ```
+
+普通用户运行 Agent；直接以 root 安装时须指定 `--user <普通用户>`。安全默认值、预览资源清单、代理来源及签名 OTA 配置见[部署指南](../DEPLOYMENT-CN.md#安全设置与升级迁移)。
 
 ## 配对
 
@@ -84,6 +86,7 @@ Environment=POCKETSHELL_PORT=8722
 Environment=POCKETSHELL_ADVERTISE=wss://你的域名
 Environment=POCKETSHELL_TLS=0
 Restart=on-failure
+UMask=0077
 User=你的用户名
 
 [Install]
