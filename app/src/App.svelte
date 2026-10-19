@@ -6,6 +6,7 @@
   import { installJsErrorHook } from "./lib/js-error-hook";
   import { mergeSessions, tombstone, closeTab as closeTabFn, nextSessionName, shouldAdopt, type LocalSession } from "./lib/ui/session-view";
   import { clampSplit, type BottomPanel } from "./lib/ui/shell";
+  import { loadBottomCollapsed, saveBottomCollapsed } from "./lib/ui/bottom-region";
   import { recallDims } from "./lib/term/fit-guard";
   import TerminalView from "./components/Terminal.svelte";
   import TermCopyOverlay from "./components/TermCopyOverlay.svelte";
@@ -69,7 +70,7 @@
   let backgrounded = $state<Set<string>>(new Set());
   let bottomPanel = $state<BottomPanel>("kbd");
   let splitRatio = $state(0.6);
-  let fullscreen = $state(false);
+  let userBottomCollapsed = $state(loadBottomCollapsed());
   let copyMode = $state(false); // req 7-5: terminal "copy mode" overlay is open
   let pageFullscreen = $state(false);
   function togglePageFullscreen() {
@@ -92,7 +93,35 @@
   let treeTick = $state(0);
   let fileDirty = $state(new Set<string>());
   let pendingEdit = $state<string | null>(null);
-  let editingId = $state<string | null>(null); // top-tab id whose editor is open (forces fullscreen)
+  let editingIds = $state(new Set<string>());
+  let expandedEditorIds = $state(new Set<string>());
+  const bottomCollapsed = $derived(userBottomCollapsed ||
+    (editingIds.has(activeTopId) && !expandedEditorIds.has(activeTopId)));
+  function setEditing(id: string, editing: boolean) {
+    const next = new Set(editingIds);
+    if (editing) next.add(id); else next.delete(id);
+    editingIds = next;
+    const expanded = new Set(expandedEditorIds);
+    expanded.delete(id);
+    expandedEditorIds = expanded;
+  }
+  function setBottomCollapsed(collapsed: boolean) {
+    if (collapsed && document.activeElement instanceof HTMLElement &&
+        document.activeElement.closest(".bottom, .bar-swipe")) {
+      document.activeElement.blur();
+    }
+    // An explicit expansion also overrides the active editor's temporary collapse.
+    if (!collapsed && editingIds.has(activeTopId)) {
+      expandedEditorIds = new Set([...expandedEditorIds, activeTopId]);
+    }
+    userBottomCollapsed = collapsed;
+    saveBottomCollapsed(collapsed);
+  }
+  function toggleBottomRegion() {
+    cancelSelection();
+    copyMode = false;
+    setBottomCollapsed(!bottomCollapsed);
+  }
   let topEl: HTMLDivElement | null = null;
   function setFileDirty(id: string, d: boolean) {
     const next = new Set(fileDirty);
@@ -124,7 +153,7 @@
 
   function openPanel(p: BottomPanel) {
     bottomPanel = p;
-    fullscreen = false; // leaving fullscreen — otherwise the bottom region stays hidden
+    setBottomCollapsed(false);
     // 需求9: entering the file panel re-syncs the root to the terminal's pwd
     // if root-follow is on and the focused tab is a terminal that has cd'd.
     if (p !== "file" || !loadRootFollow()) return;
@@ -719,12 +748,12 @@
     void navigator.clipboard?.writeText(text.replace(/\n+$/, "\n")).then(() => showToast(tr("app.toast.copiedVisible")));
   }
 
-  // ---- Divider drag + double-tap fullscreen ----
+  // ---- Divider drag + double-tap bottom collapse ----
   let dragging = false;
   let lastTapAt = 0;
   function onDividerDown(e: PointerEvent) {
     const now = e.timeStamp;
-    if (now - lastTapAt < 300) { fullscreen = !fullscreen; lastTapAt = 0; return; }
+    if (now - lastTapAt < 300) { toggleBottomRegion(); dragging = false; lastTapAt = 0; return; }
     lastTapAt = now;
     dragging = true;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
@@ -739,7 +768,7 @@
     (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
   }
 
-  const topFlex = $derived(fullscreen ? 1 : splitRatio);
+  const topFlex = $derived(bottomCollapsed ? 1 : splitRatio);
 
   // 所有键盘/输入法/片段文本的唯一出口。
   //
@@ -814,7 +843,6 @@
     tabOrder = appendOrder(tabOrder, r.id);
     activeTop = r.id;
     transitionStreaming(r.id);
-    if (fullscreen) fullscreen = false;
   }
   // Drawer navigation: swap the file shown by a preview tab in place, keeping the
   // tab id stable so its FilePreview instance (fullscreen + drawer) is preserved.
@@ -823,7 +851,7 @@
   }
   function closeFile(id: string) {
     setFileDirty(id, false);
-    if (editingId === id) { editingId = null; fullscreen = false; }
+    setEditing(id, false);
     fileTabs = closeFileTab(fileTabs, id);
     tabOrder = removeOrder(tabOrder, id);
     if (activeTop === id) {
@@ -863,11 +891,6 @@
     copyMode = false; // leaving the tab drops the copy-mode overlay (clone is stale)
     if (id.startsWith("file:")) { activeTop = id; transitionStreaming(id); }
     else selectSession(id);
-    // An open editor forces fullscreen; leaving its tab must release it (the
-    // divider — the usual exit — is hidden while fullscreen). Only touch
-    // fullscreen when an editor is actually open, so manual terminal-fullscreen
-    // is unaffected.
-    if (editingId) fullscreen = id === editingId;
   }
 
   // Read the focused tab's real cwd for the file panel's root buttons.
@@ -992,7 +1015,7 @@
       case "toBackground": toBackground(); break;
       case "scrollUp": terms.get(activeId)?.scrollPages(-1); break;
       case "scrollDown": terms.get(activeId)?.scrollPages(1); break;
-      case "toggleFullscreen": cancelSelection(); copyMode = false; fullscreen = !fullscreen; break;
+      case "toggleFullscreen": toggleBottomRegion(); break;
       case "copyVisible": {
         const t = activeTerm(); if (!t) { showToast(tr("app.toast.noTerminal")); break; }
         void copyLastOutput(activeId, t);
@@ -1108,7 +1131,7 @@
   });
 </script>
 
-<div class="shell">
+<div class="shell" class:bottom-collapsed={bottomCollapsed}>
   <div class="topbar">
     <span class="brand mono" title={instanceName ? $t('app.instanceName', { values: { name: instanceName } }) : undefined}>{brandPrefix(instanceName)}pocket<b>shell</b></span>
     <span class="version mono">v{updInfo?.current ?? ""}</span>
@@ -1121,6 +1144,17 @@
       <span class="conn-dot"></span>
       {#if settings.eink}<span class="conn-label">{$t('app.status.' + status)}</span>{/if}
     </div>
+    <button class="fs-btn bottom-toggle" class:expanded={!bottomCollapsed}
+      aria-label={bottomCollapsed ? $t('app.bottom.expand') : $t('app.bottom.collapse')}
+      title={bottomCollapsed ? $t('app.bottom.expand') : $t('app.bottom.collapse')}
+      aria-expanded={!bottomCollapsed} aria-controls="bottom-status bottom-panel bottom-menu"
+      onclick={toggleBottomRegion}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        {#if !bottomCollapsed}<path d="M3 15h18" /><path d="m9 7 3 3 3-3" />
+        {:else}<path d="m9 13 3-3 3 3" />{/if}
+      </svg>
+    </button>
     <button class="fs-btn" aria-label={pageFullscreen ? $t('app.fullscreen.exit') : $t('app.fullscreen.enter')} onclick={togglePageFullscreen}>
       {#if pageFullscreen}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg>
@@ -1167,10 +1201,7 @@
       <FilePreview {conn} path={t.path} mode={t.mode} active={activeTopId === t.id}
         base={(rootTick, loadProjectRoot())}
         onToast={showToast}
-        onEditingChange={(e) => {
-          editingId = e ? t.id : (editingId === t.id ? null : editingId);
-          if (activeTopId === t.id) fullscreen = e;
-        }}
+        onEditingChange={(e) => setEditing(t.id, e)}
         onDirtyChange={(d) => setFileDirty(t.id, d)}
         autoEdit={pendingEdit === t.path && t.mode === "code"}
         onAutoEdit={() => (pendingEdit = null)}
@@ -1192,15 +1223,15 @@
     {/if}
   </div>
 
-  {#if !fullscreen}
+  <div id="bottom-status" class="status-slot" class:hidden={bottomCollapsed}>
     <StatusBar
       branch={gitBranch} dirty={gitDirty}
       latency={metrics.latency} rxBytes={metrics.rxBytes} elapsedMs={metrics.elapsedMs}
       online={status === "online"}
       ctxUsed={activeSessionMeta?.ctxUsed} ctxTotal={activeSessionMeta?.ctxTotal}
       onDown={onDividerDown} onMove={onDividerMove} onUp={onDividerUp} />
-  {/if}
-  <div class="bottom" class:hidden={fullscreen} style="flex: {1 - topFlex} 1 0;">
+  </div>
+  <div id="bottom-panel" class="bottom" class:hidden={bottomCollapsed} style="flex: {1 - topFlex} 1 0;">
     <div class="panel-slot" class:hidden={bottomPanel !== "file"}>
       <FilePanel {conn} onOpenFile={(p) => openFile(p, "code")} onOpenDiff={(p) => openFile(p, "diff")} onCd={(p) => sendActive('cd ' + JSON.stringify(p) + '\n')} {getFocusedPwd} {rootTick} refreshTick={treeTick} onToast={showToast} onToastRich={(title, detail, ms) => showToast(title, { detail, ms })} onNewFile={handleNewFile} />
     </div>
@@ -1238,7 +1269,7 @@
 
   <!-- barEl wraps the tab bar so App can attach the panel-swipe listeners
        (swipe left/right on the bar to switch panels; see bottomSwipe). -->
-  <div class="bar-swipe" bind:this={barEl}>
+  <div id="bottom-menu" class="bar-swipe" class:hidden={bottomCollapsed} bind:this={barEl}>
     <BottomBar active={bottomPanel} taskBadge={sessions.some((s) => s.state === "wait")} onSelect={openPanel} />
   </div>
 </div>
@@ -1277,6 +1308,10 @@
       var(--bg);
     overflow: hidden;
     position: relative;
+  }
+  .shell.bottom-collapsed {
+    box-sizing: border-box;
+    padding-bottom: var(--safe-bottom);
   }
 
   .topbar {
@@ -1320,6 +1355,10 @@
     flex: 0 0 auto;
   }
   .brand {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-weight: 700;
     letter-spacing: 0.2px;
     font-size: 0.84rem;
@@ -1328,6 +1367,7 @@
   .brand b { color: var(--brand-sig); font-weight: 700; }
   .version {
     min-width: 0;
+    max-width: 22%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1407,6 +1447,8 @@
   .fs-btn svg { width: 16px; height: 16px; display: block; }
   .fs-btn:hover { color: var(--text); }
   .fs-btn:active { background: var(--keyhi); }
+  .bottom-toggle.expanded { color: var(--accent); background: var(--keyhi); }
+  .bottom-toggle { min-width: 32px; min-height: 32px; }
 
   /* 索引卡片 tab 自带下边线与内边距，外层不再加 padding，否则卡片压不住线 */
   .tabs-wrap {
@@ -1474,13 +1516,14 @@
      layout-transparent (the bar keeps its own flex:0 0 auto); pan-y lets a
      horizontal swipe reach our pointer handlers instead of a native gesture. */
   .bar-swipe { flex: 0 0 auto; touch-action: pan-y; }
+  .status-slot { flex: 0 0 auto; }
   .panel-slot {
     display: flex;
     flex-direction: column;
     flex: 1;
     min-height: 0;
   }
-  .bottom.hidden, .panel-slot.hidden { display: none; }
+  .bottom.hidden, .panel-slot.hidden, .bar-swipe.hidden, .status-slot.hidden { display: none; }
 
   .toast {
     position: absolute;

@@ -115,18 +115,25 @@
   // 读不到 virtualKeyboard 时 vkHeight 为 0，自然落到 iOS 分支。
   // 上一次算出的编辑区高度，用来判断这次是变矮还是变高（见 shouldRecenterCursor）。
   let lastFitHeight: number | undefined;
+  let layoutObserver: ResizeObserver | undefined;
 
   function fitViewport() {
     if (!rootEl) return;
+    const parent = rootEl.parentElement?.getBoundingClientRect();
+    if (!parent || parent.height <= 0) return;
+    const top = rootEl.getBoundingClientRect().top;
     const vv = window.visualViewport;
     const vk = (navigator as any).virtualKeyboard;
-    const h = visibleHeightBelow({
-      top: rootEl.getBoundingClientRect().top,
+    const visibleHeight = visibleHeightBelow({
+      top,
       innerHeight: window.innerHeight,
       vvHeight: vv?.height ?? window.innerHeight,
       vvOffsetTop: vv?.offsetTop ?? 0,
       vkHeight: vk?.boundingRect?.height ?? 0,
     });
+    // The top bar can expand the bottom panels while editing. Respect both
+    // the available pane height and the keyboard's visible viewport.
+    const h = Math.max(0, Math.min(visibleHeight, parent.bottom - top));
     rootEl.style.height = h + "px";
     // 只在编辑区**变矮**时把光标滚回视野（键盘弹起、可能正压着光标）。
     // 无条件滚会劫持用户的滚动：光标在没点过正文时停在文件开头，而 Android
@@ -183,9 +190,14 @@
     // 上面那个 resize **不会触发**——必须另外听 geometrychange，否则这条
     // 修复在 Android 上等于没做。
     (navigator as any).virtualKeyboard?.addEventListener?.("geometrychange", fitViewport);
+    if (typeof ResizeObserver !== "undefined" && rootEl?.parentElement) {
+      layoutObserver = new ResizeObserver(fitViewport);
+      layoutObserver.observe(rootEl.parentElement);
+    }
     fitViewport();
   });
   onDestroy(() => {
+    layoutObserver?.disconnect();
     window.visualViewport?.removeEventListener("resize", fitViewport);
     (navigator as any).virtualKeyboard?.removeEventListener?.("geometrychange", fitViewport);
     view?.destroy();
@@ -235,7 +247,7 @@
 </div>
 
 <style>
-  .ed-root { display: flex; flex-direction: column; width: 100%; height: 100%; background: var(--code-bg); }
+  .ed-root { display: flex; flex-direction: column; width: 100%; height: 100%; max-height: 100%; min-height: 0; background: var(--code-bg); }
   /* height fixed to match FilePreview's .pv-bar so preview↔edit does not jitter */
   .ed-bar { display: flex; align-items: center; gap: 4px; height: 40px; box-sizing: border-box; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--line); flex: 0 0 auto; }
   .ed-name { font-size: 0.72rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; display: flex; align-items: center; gap: 5px; }

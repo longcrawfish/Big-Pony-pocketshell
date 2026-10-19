@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { cleanup, render } from "@testing-library/svelte";
+import { cleanup, fireEvent, render } from "@testing-library/svelte";
 import { tick } from "svelte";
 import type { SessionMeta } from "./lib/net/protocol";
 
@@ -21,7 +21,7 @@ vi.mock("./components/FilePanel.svelte", async () => ({ default: (await import("
 vi.mock("./components/BottomBar.svelte", async () => ({ default: (await import("./test/AppEmptyProbe.svelte")).default }));
 vi.mock("./components/StatusBar.svelte", async () => ({ default: (await import("./test/AppEmptyProbe.svelte")).default }));
 vi.mock("./components/DeviceManager.svelte", async () => ({ default: (await import("./test/AppEmptyProbe.svelte")).default }));
-vi.mock("./components/Keyboard.svelte", async () => ({ default: (await import("./test/AppEmptyProbe.svelte")).default }));
+vi.mock("./components/Keyboard.svelte", async () => ({ default: (await import("./test/AppKeyboardProbe.svelte")).default }));
 vi.mock("./components/SnippetPanel.svelte", async () => ({ default: (await import("./test/AppEmptyProbe.svelte")).default }));
 vi.mock("./components/SettingsPanel.svelte", async () => ({ default: (await import("./test/AppEmptyProbe.svelte")).default }));
 vi.mock("./components/UpdateDialog.svelte", async () => ({ default: (await import("./test/AppEmptyProbe.svelte")).default }));
@@ -178,4 +178,72 @@ test("creating a session from a file tab makes the new terminal visible and stre
   expect(getByTestId("terminal-A")).toHaveAttribute("data-streaming", "false");
   expect(getByTestId("terminal-C")).toHaveAttribute("data-active", "true");
   expect(getByTestId("terminal-C")).toHaveAttribute("data-streaming", "true");
+});
+
+test("bottom toggle preserves mounted panels, draft and split, and remembers the explicit choice", async () => {
+  const view = await mountApp();
+  const toggle = view.container.querySelector<HTMLButtonElement>(".bottom-toggle")!;
+  const panel = view.container.querySelector(".bottom")!;
+  const top = view.container.querySelector<HTMLElement>(".top")!;
+  const split = top.style.flex;
+  await fireEvent.input(view.getByLabelText("Keyboard draft"), { target: { value: "unsent text" } });
+  await fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  for (const id of ["bottom-status", "bottom-panel", "bottom-menu"]) {
+    expect(view.container.querySelector(`#${id}`)).toHaveClass("hidden");
+  }
+  expect(top.style.flex).toBe("1 1 0px");
+  expect(localStorage.getItem("ps.bottomCollapsed")).toBe("true");
+  await fireEvent.click(toggle);
+  expect(view.container.querySelector(".bottom")).toBe(panel);
+  expect(view.getByLabelText("Keyboard draft")).toHaveValue("unsent text");
+  expect(top.style.flex).toBe(split);
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+  // The existing shortcut uses the same state, including the menu visibility.
+  await fireEvent.click(view.getByText("Toggle content fullscreen"));
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  view.unmount();
+  const restored = await mountApp();
+  expect(restored.container.querySelector(".bottom-toggle")).toHaveAttribute("aria-expanded", "false");
+  appControl.helpers.openPanel("file");
+  await tick();
+  expect(restored.container.querySelector(".bottom-toggle")).toHaveAttribute("aria-expanded", "true");
+  expect(appControl.helpers.getState().activePanel).toBe("file");
+});
+
+test("editor collapse is temporary, follows its tab, and allows explicit expansion", async () => {
+  const view = await mountApp();
+  const toggle = view.container.querySelector<HTMLButtonElement>(".bottom-toggle")!;
+  appControl.helpers.openFile("/tmp/a.ts", "code");
+  await tick();
+  const editor = view.getByText("Toggle editor /tmp/a.ts");
+  await fireEvent.click(editor);
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(localStorage.getItem("ps.bottomCollapsed")).not.toBe("true");
+  appControl.helpers.enterSession("A");
+  await tick();
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  appControl.helpers.openFile("/tmp/a.ts", "code");
+  await tick();
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await fireEvent.click(editor);
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+});
+
+test("leaving an editor preserves the user's collapsed preference", async () => {
+  const view = await mountApp();
+  const toggle = view.container.querySelector<HTMLButtonElement>(".bottom-toggle")!;
+  await fireEvent.click(toggle);
+  appControl.helpers.openFile("/tmp/a.ts", "code");
+  await tick();
+  const editor = view.getByText("Toggle editor /tmp/a.ts");
+  await fireEvent.click(editor);
+  await fireEvent.click(editor);
+  appControl.helpers.enterSession("A");
+  await tick();
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(localStorage.getItem("ps.bottomCollapsed")).toBe("true");
 });

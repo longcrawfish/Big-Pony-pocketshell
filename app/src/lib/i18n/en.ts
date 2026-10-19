@@ -26,6 +26,10 @@ export default {
     },
     topAria: "Terminal and file preview",
     instanceName: "Server instance: {name}",
+    bottom: {
+      expand: "Expand bottom area",
+      collapse: "Collapse bottom area",
+    },
     fullscreen: {
       enter: "Fullscreen",
       exit: "Exit fullscreen",
@@ -549,13 +553,13 @@ curl -fsSL https://pocketshell.net/install.sh | sh
   },
   statusbar: {
     aria: {
-      divider: "Split handle: drag to resize the panes, double-tap for fullscreen",
+      divider: "Split handle: drag to resize the panes, double-tap to collapse the bottom area",
       branch: "Current Git branch",
       latency: "Connection latency",
       throughput: "Download rate",
     },
     tip: {
-      fullscreen: "Double-tap here for fullscreen",
+      fullscreen: "Double-tap to collapse; expand from the top bar",
     },
   },
   git: {

@@ -30,6 +30,10 @@ export default {
     },
     topAria: "终端与文件预览",
     instanceName: "服务器实例：{name}",
+    bottom: {
+      expand: "展开底部区域",
+      collapse: "收起底部区域",
+    },
     fullscreen: {
       enter: "全屏",
       exit: "退出全屏",
@@ -552,13 +556,13 @@ curl -fsSL https://pocketshell.net/install.sh | sh
   },
   statusbar: {
     aria: {
-      divider: "分区高度调节条：拖动调整上下区域，双击切换全屏",
+      divider: "分区高度调节条：拖动调整上下区域，双击收起底部区域",
       branch: "当前 Git 分支",
       latency: "连接延迟",
       throughput: "下行速率",
     },
     tip: {
-      fullscreen: "双击这里可全屏",
+      fullscreen: "双击收起底部，可从顶部按钮展开",
     },
   },
   git: {
