@@ -12,7 +12,7 @@
     | { kind: "term"; id: string; title: string; state: SessionState; closed: boolean; shell: boolean }
     | { kind: "file"; id: string; title: string; path: string };
 
-  let { tabs, activeId, onSelect, onNew, onCloseTab, onCopyPath, dirtyIds, sizeControl, online = true }: {
+  let { tabs, activeId, onSelect, onNew, onCloseTab, onCopyPath, dirtyIds, sizeControl, online = true, canScroll = false, onScroll }: {
     tabs: TabView[]; activeId: string;
     onSelect: (id: string) => void;
     onNew: (name: string, kind: "tmux" | "shell") => void;
@@ -21,6 +21,8 @@
     dirtyIds?: Set<string>;
     sizeControl?: SizeClient;
     online?: boolean;
+    canScroll?: boolean;
+    onScroll?: (session: string, direction: "top" | "bottom") => void;
   } = $props();
 
   const panelId = $props.id();
@@ -80,6 +82,12 @@
     try { await client[action](session); }
     catch { if (client === sizeControl) sizeErrors = new Set(sizeErrors).add(session); }
     finally { if (client === sizeControl) sizeBusy = new Set([...sizeBusy].filter(id => id !== session)); }
+  }
+  function scrollAction(direction: "top" | "bottom") {
+    const session = openSizeId;
+    if (!session || session !== activeId || !canScroll || !onScroll) return;
+    onScroll(session, direction);
+    closeSize(true);
   }
 
   // New-session modal
@@ -158,7 +166,7 @@
   // loop variable, not the store. Deriving it here keeps locale reactivity.
   const sizeLabels = $derived({
     compact: { self: $t('terminal.size.compact.self'), other: $t('terminal.size.compact.other'), none: $t('terminal.size.compact.none') },
-    controls: $t('terminal.size.controls'), failed: $t('terminal.size.failed'),
+    controls: $t('terminal.pageControls'), failed: $t('terminal.size.failed'),
     full: { self: $t('terminal.size.self'), other: $t('terminal.size.other'), none: $t('terminal.size.none') },
     short: { self: $t('terminal.size.short.self'), other: $t('terminal.size.short.other'), none: $t('terminal.size.short.none') },
   });
@@ -256,7 +264,7 @@
 {#if openSizeId && openSizeState && sizeAnchor}
   <SizeControlPanel id={panelId} session={openSizeId} sizeState={openSizeState} anchor={sizeAnchor}
     focusOnOpen={focusSizePanel} busy={sizeBusy.has(openSizeId)} error={sizeErrors.has(openSizeId)} {online}
-    onAction={sizeAction} onClose={closeSize} />
+    onAction={sizeAction} onClose={closeSize} canScroll={canScroll && !!onScroll} onScroll={scrollAction} />
 {/if}
 
 {#if adding}

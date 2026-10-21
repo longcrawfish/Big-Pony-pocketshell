@@ -339,6 +339,9 @@ curl -fsSL https://pocketshell.net/install.sh | sh
     },
   },
   terminal: {
+    pageControls: "Page controls",
+    scrollTop: "Scroll to top",
+    scrollBottom: "Scroll to bottom",
     size: {"compact": {"self": "Self", "other": "Other", "none": "Free"}, "controls": "Size controls", "short": {"self": "Size: this tab", "other": "Size: other", "none": "Released"}, "takeoverHint": "Taking control transfers sizing to this tab. The other client will observe the size.", "offline": "Disconnected. Reconnect to change size control.", "self": "This tab controls size", "other": "Another client controls size", "none": "Size released", "release": "Release size", "acquire": "Take size control", "migrate": "Restore inherited policy", "migrateConfirm": "This window is manual; its original policy is unknown. Inherit the global policy? Tasks keep running. Existing hard line breaks cannot be undone.", "failed": "Size operation failed. Check the window state again.", "tooSmall": "Less than 20 columns or 4 rows available. Reduce terminal text size, close the keyboard or rotate the screen. Remote size is unchanged."},
     seeding: "Loading session history…",
     seedRetrying: "Timed out — retrying…",
@@ -769,7 +772,7 @@ curl -fsSL https://pocketshell.net/install.sh | sh
       },
       tabs: {
         h: "Top tabs",
-        p: "· Single tap: preview / switch to that window\n· Active tmux tab: toggle size controls; its arrow opens them directly\n· × in a tab: close it; shell / file tabs also support double-tap\n· Triple-tap a file tab: copy its absolute path\n· ＋ top-right: new tmux or shell window\n· tmux: fully persistent, survives disconnects AND agent restarts, shows in the task panel\n· shell: isolated foreground session, survives disconnects but not restarts, destroyed when the tab closes",
+        p: "· Single tap: preview / switch to that window\n· Active tmux tab: toggle page controls (size and scrolling); its arrow opens them directly\n· × in a tab: close it; shell / file tabs also support double-tap\n· Triple-tap a file tab: copy its absolute path\n· ＋ top-right: new tmux or shell window\n· tmux: fully persistent, survives disconnects AND agent restarts, shows in the task panel\n· shell: isolated foreground session, survives disconnects but not restarts, destroyed when the tab closes",
       },
       icons: {
         h: "Icon buttons",

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Terminal } from "@xterm/xterm";
   import { onMount } from "svelte";
+  import { SvelteMap } from "svelte/reactivity";
   import { Connection, type ConnStatus } from "./lib/net/connection";
   import { registerDevHelpers, unregisterDevHelpers } from "./lib/dev-helpers";
   import { installJsErrorHook } from "./lib/js-error-hook";
@@ -288,7 +289,22 @@
     try { instanceName = (await conn.agentInfo()).instanceName; }
     catch { /* 断线时保持现状，不清空已显示的名字 */ }
   }
-  const terms = new Map<string, Terminal>();
+  const terms = new SvelteMap<string, Terminal>();
+  let canScrollTerminal = $state(false);
+  $effect(() => {
+    const term = terms.get(activeTopId);
+    const update = () => { canScrollTerminal = term?.buffer.active.type === "normal"; };
+    update();
+    const listener = term?.buffer.onBufferChange(update);
+    return () => listener?.dispose();
+  });
+  function scrollTerminal(session: string, direction: "top" | "bottom") {
+    if (session !== activeTopId) return;
+    const term = terms.get(session);
+    if (!term || term.buffer.active.type !== "normal") return;
+    if (direction === "top") term.scrollToTop();
+    else term.scrollToBottom();
+  }
   // 每个终端暴露的重灌入口（onResync 用）。与 terms 同生命周期。
   // Terminal owns recovery scheduling. App only forwards a content-free trigger;
   // the callback may defer or coalesce it while hidden or already recovering.
@@ -1137,7 +1153,7 @@
       hasUpdate={updInfo?.hasUpdate ?? false} eink={settings.eink}
       fullscreen={pageFullscreen} onFullscreen={togglePageFullscreen} onUpdate={() => (updOpen = true)} />
     <div class="tabs-wrap">
-      <TopTabs sizeControl={conn.sizeControl} online={status === "online"} tabs={topTabsView} activeId={activeTopId} onSelect={selectTop} onNew={newSession} onCloseTab={closeTopTab} onCopyPath={copyTabPath} dirtyIds={fileDirty} />
+      <TopTabs sizeControl={conn.sizeControl} online={status === "online"} tabs={topTabsView} activeId={activeTopId} onSelect={selectTop} onNew={newSession} onCloseTab={closeTopTab} onCopyPath={copyTabPath} dirtyIds={fileDirty} canScroll={canScrollTerminal} onScroll={scrollTerminal} />
     </div>
     <button class="fs-btn bottom-toggle" class:expanded={!bottomCollapsed}
       aria-label={bottomCollapsed ? $t('app.bottom.expand') : $t('app.bottom.collapse')}

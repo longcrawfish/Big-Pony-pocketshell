@@ -3,11 +3,13 @@
   import { t } from "svelte-i18n";
   import type { SizeState } from "../lib/net/protocol";
 
-  let { id, session, sizeState, anchor, focusOnOpen, busy, error, online, onAction, onClose }: {
+  let { id, session, sizeState, anchor, focusOnOpen, busy, error, online, onAction, onClose, canScroll, onScroll }: {
     id: string; session: string; sizeState: SizeState; anchor: HTMLElement;
     focusOnOpen: boolean; busy: boolean; error: boolean; online: boolean;
     onAction: (action: "acquire" | "release" | "migrate") => void;
     onClose: (restoreFocus?: boolean) => void;
+    canScroll: boolean;
+    onScroll: (direction: "top" | "bottom") => void;
   } = $props();
   let panel: HTMLDivElement;
   let left = $state(8), top = $state(48), width = $state(320), maxHeight = $state(400);
@@ -60,7 +62,7 @@
 <button class="size-backdrop" style:top={`${top}px`} tabindex="-1" aria-label={$t('common.close')}
   onpointerdown={(e) => e.preventDefault()} onclick={() => onClose()}></button>
 <div class="size-controls" bind:this={panel} {id} role="dialog" tabindex="-1"
-  aria-label={`${$t('terminal.size.controls')}: ${session}`} aria-busy={busy}
+  aria-label={`${$t('terminal.pageControls')}: ${session}`}
   style:left={`${left}px`} style:top={`${top}px`} style:width={`${width}px`} style:max-height={`${maxHeight}px`}
   onfocusout={(e) => {
     if (e.relatedTarget instanceof Node && !panel.contains(e.relatedTarget) && !anchor.closest('.toptabs')?.contains(e.relatedTarget)) onClose();
@@ -74,7 +76,7 @@
     <span>{sizeState.cols} × {sizeState.rows}</span>
   </div>
   {#if sizeState.controller === 'other'}<p>{$t('terminal.size.takeoverHint')}</p>{/if}
-  <div class="actions">
+  <div class="actions" aria-busy={busy}>
     <button disabled={busy || sizeState.blocked || !online} onclick={() => onAction(sizeState.controller === 'self' ? 'release' : 'acquire')}>
       {$t(sizeState.controller === 'self' ? 'terminal.size.release' : 'terminal.size.acquire')}
     </button>
@@ -84,6 +86,10 @@
   </div>
   {#if !online}<p role="status">{$t('terminal.size.offline')}</p>{/if}
   {#if sizeState.blocked || error}<p class="error" role="status">{$t('terminal.size.failed')}</p>{/if}
+  <div class="actions scroll-actions">
+    <button disabled={!canScroll} onclick={() => onScroll('top')}>{$t('terminal.scrollTop')}</button>
+    <button disabled={!canScroll} onclick={() => onScroll('bottom')}>{$t('terminal.scrollBottom')}</button>
+  </div>
 </div>
 
 <style>
@@ -93,6 +99,8 @@
   .heading strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .size-state { flex-wrap: wrap; justify-content: space-between; margin-bottom: 8px; }
   .actions { flex-wrap: wrap; }
+  .scroll-actions { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .scroll-actions button { flex: 1; }
   button { min-height: var(--ui-touch, 44px); padding: 6px 12px; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); cursor: pointer; }
   button:disabled { opacity: 0.6; cursor: default; }
   .dismiss { width: var(--ui-touch, 44px); flex: none; padding: 0; border: 0; background: transparent; font-size: 20px; }

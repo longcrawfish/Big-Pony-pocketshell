@@ -90,6 +90,22 @@ try:
             print('Browser startup UI:', page.locator('body').inner_text()[:400], flush=True)
             page.screenshot(path=str(OUT/'startup-failure.png'))
             raise
+        # Inspect real xterm viewport positions without adding a production API.
+        # Import the already loaded Vite module and capture subsequent terminals.
+        page.evaluate('''async () => {
+          const url = performance.getEntriesByType('resource').map(r => r.name)
+            .find(name => name.includes('/@xterm_xterm.js'));
+          if (!url) throw new Error('xterm module not loaded');
+          const { Terminal } = await import(url);
+          const open = Terminal.prototype.open;
+          window.scrollTerms = [];
+          Terminal.prototype.open = function(...args) {
+            window.scrollTerms.push(this);
+            return open.apply(this, args);
+          };
+          window.activeScrollTerm = () => window.scrollTerms.find(t =>
+            t.element?.closest('.term-wrap:not(.hidden)'));
+        }''')
         name = 'v2-acceptance'
         first = time.monotonic()
         page.evaluate('(s)=>window.pocketshell.newSession(s)', name)
@@ -118,12 +134,27 @@ try:
         assert page.evaluate('window.sizeDismissClicks') == 0
         assert tmux('display-message', '-p', '-t', name, '#{window_width}x#{window_height}') == grid
         check('panel toggles preserve real tmux grid and terminal bounds; rapid taps do not close; outside press is consumed')
+        page.evaluate('window.pocketshell.sendInput("for i in $(seq 1 250); do echo SCROLL_ROW_$i; done\\n")')
+        page.wait_for_function('window.activeScrollTerm()?.buffer.active.baseY > 150')
+        page.wait_for_timeout(500)
+        for direction, label in [('top', '滚动到顶部'), ('bottom', '滚动到底部'), ('bottom', '滚动到底部')]:
+            size_panel(page)
+            page.get_by_role('button', name=label, exact=True).click()
+            expect(page.locator('.size-controls')).to_have_count(0)
+            page.wait_for_function('''(direction) => {
+              const b = window.activeScrollTerm().buffer.active;
+              return b.viewportY === (direction === 'top' ? 0 : b.baseY);
+            }''', arg=direction)
+            assert not page.evaluate("document.activeElement?.matches('input, textarea')")
+        assert page.evaluate('window.sizeDismissClicks') == 0
+        assert tmux('display-message', '-p', '-t', name, '#{window_width}x#{window_height}') == grid
+        check('mobile scroll actions reach real xterm endpoints, dismiss without input focus or click-through, and preserve size')
         second = 'size-menu-second-session-with-a-long-title'
         page.evaluate('(s)=>window.pocketshell.newSession(s)', second)
         expect(page.locator('.tab.active .size-toggle')).to_be_visible()
         page.locator('.tab.active .size-toggle').click()
         page.locator('.tab[title="'+name+'"] .size-toggle').click()
-        expect(page.locator('.size-controls')).to_have_attribute('aria-label', '尺寸控制: '+name)
+        expect(page.locator('.size-controls')).to_have_attribute('aria-label', '页面控制: '+name)
         close_size(page)
         page.locator('.tab[title="'+second+'"] .name').click()
         expect(page.locator('.size-controls')).to_have_count(0)
@@ -205,6 +236,9 @@ try:
         captured=tmux('capture-pane','-p','-t',name).splitlines()
         assert '全屏中文' in captured[0] and 'REVERSE' in captured[0]
         assert captured[1].endswith('R') and len(captured[1])==remote_cols
+        size_panel(page)
+        expect(page.get_by_role('button', name='滚动到顶部', exact=True)).to_be_disabled(timeout=10000)
+        expect(page.get_by_role('button', name='滚动到底部', exact=True)).to_be_disabled()
         page.locator('.term-wrap.observing .term').evaluate('(el)=>el.scrollLeft=el.scrollWidth')
         page.screenshot(path=str(OUT/'alternate-screen-right-edge.png'))
         close_size(other)
@@ -218,6 +252,7 @@ try:
         other.wait_for_function('window.getSelection()?.toString().length > 0')
         other.locator('.cm-bar .primary').click()
         page.evaluate('window.pocketshell.sendInput("\\n")')
+        expect(page.get_by_role('button', name='滚动到顶部', exact=True)).to_be_enabled(timeout=10000)
         check('alternate screen, Chinese, ANSI/inverse output and desktop selection remain usable')
         size_panel(other)
         other.get_by_role('button',name='Release size',exact=True).click()
